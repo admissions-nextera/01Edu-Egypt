@@ -32,10 +32,20 @@ type Relation struct {
 	DatesLocations map[string][]string `json:"datesLocations"`
 }
 
-// Index holds the wrapper for the locations, dates, and relations endpoints
-// These endpoints return an object with an "index" key containing an array
-type Index struct {
-	Locations []Locations `json:"index"`
-	Dates     []Dates     `json:"index"`
-	Relation  []Relation  `json:"index"`
+// FIX: Each index wrapper must be its own struct with its own json tag.
+// Previously all three fields shared "index" which caused unmarshal conflicts.
+
+// LocationsIndex holds the wrapper for the locations endpoint
+type LocationsIndex struct {
+	Index []Locations `json:"index"`
+}
+
+// DatesIndex holds the wrapper for the dates endpoint
+type DatesIndex struct {
+	Index []Dates `json:"index"`
+}
+
+// RelationIndex holds the wrapper for the relations endpoint
+type RelationIndex struct {
+	Index []Relation `json:"index"`
 }
