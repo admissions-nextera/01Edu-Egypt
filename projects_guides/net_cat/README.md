@@ -1,38 +1,57 @@
 # Net-Cat Project Guide
 
-> **Rule before you start:** If you are stuck, search first. Every resource link in this guide points to where the answer lives. Do not paste code from AI — you will not understand it under pressure, and you will not learn the skill.
+> **Before you start:** Run `man nc` in your terminal and use `nc` to connect to a real server. You cannot recreate something you have never seen.
 
 ---
 
-## What You Are Building
+## Objectives
 
-A group chat system over TCP. One server, many clients. When a client sends a message, everyone else sees it. When someone joins or leaves, everyone is notified. It works with the standard `nc` (netcat) command — no special client needed.
+By completing this project you will learn:
 
----
-
-## Before You Write a Single Line
-
-Run this in your terminal:
-
-```bash
-man nc
-```
-
-Read it. Then answer these questions to yourself before moving on:
-
-- What does `nc` do at its core?
-- What is the difference between TCP and UDP?
-- What does it mean to "listen" on a port vs "connect" to one?
-
-If you cannot answer these, search: **"TCP vs UDP explained"** and **"what is a socket"**.
+1. **TCP Networking** — How a server listens for and accepts client connections over TCP
+2. **Concurrency** — Using goroutines to handle many clients at the same time without blocking
+3. **Mutual Exclusion** — Protecting shared data from race conditions using `sync.Mutex`
+4. **Broadcast Architecture** — Designing a system that fans one message out to many recipients
+5. **Connection Lifecycle** — Handling join, message, disconnect events cleanly
+6. **Buffered I/O** — Reading line-by-line from a network stream using `bufio`
+7. **Time Formatting** — Stamping messages with the correct timestamp format
 
 ---
 
-## Phase 1 — The Skeleton
+## Prerequisites — Topics You Must Know Before Starting
 
-### Checkpoint 1.1 — Project Structure
+### 1. Go Basics
+- Structs and methods
+- Slices — appending and removing elements
+- Goroutines (`go func()`)
+- Error handling
 
-Create this layout manually:
+### 2. TCP and Networking
+- What a TCP connection is
+- The difference between a server (listener) and a client (connector)
+- What a port number is
+
+### 3. Concurrency
+- `go` keyword — launching a goroutine
+- `sync.Mutex` — `Lock()` and `Unlock()`
+- What a race condition is and why it is dangerous
+
+### 4. I/O
+- `bufio.NewReader` and `ReadString('\n')`
+- `strings.TrimSpace`
+- `net.Conn` — the interface for reading and writing over a network connection
+
+**If any of these are unfamiliar, read about them before writing any code.**
+
+- https://pkg.go.dev/net
+- https://pkg.go.dev/sync
+- https://pkg.go.dev/bufio
+- Search: **"golang goroutines explained"**
+- Search: **"what is a race condition"**
+
+---
+
+## Project Structure
 
 ```
 net-cat/
@@ -42,170 +61,139 @@ net-cat/
 └── go.mod
 ```
 
-```bash
-go mod init net-cat
-```
-
-**Why separate files?** `main.go` is your entry point only. `server.go` handles listening and accepting connections. `client.go` handles everything about a single connected client. Keeping them separate makes the code readable and testable.
-
 ---
 
-### Checkpoint 1.2 — Reading the Port Argument
+## Milestone 1 — Read the Port Argument
 
-The program must behave like this:
-
+**Goal:**
 ```
-$ go run .
-Listening on the port :8989
-
-$ go run . 2525
-Listening on the port :2525
-
-$ go run . 2525 localhost
-[USAGE]: ./TCPChat $port
+go run .              → Listening on the port :8989
+go run . 2525         → Listening on the port :2525
+go run . 2525 extra   → [USAGE]: ./TCPChat $port
 ```
 
-Fill in the blanks:
+**Questions to answer:**
+- How do you read command-line arguments in Go?
+- What is the default port when no argument is given?
+- What condition triggers the usage message?
 
+**Code Placeholder:**
 ```go
 // main.go
-package main
-
-import (
-    "fmt"
-    "os"
-)
 
 func main() {
-    port := "8989"
+    // 1. Set default port to "8989"
 
-    if len(os.Args) == __ {
-        port = __________
-    } else if len(os.Args) __ 2 {
-        fmt.Println("__________")
-        return
-    }
+    // 2. If exactly one argument was given: use it as the port
 
-    fmt.Println("Listening on the port :" + port)
+    // 3. If more than one argument was given: print usage and return
+
+    // 4. Print "Listening on the port :PORT"
+
+    // 5. Call startServer(port) — built in the next milestone
 }
 ```
 
-**Verify before moving on:**
-- `go run .` prints `Listening on the port :8989`
-- `go run . 2525` prints `Listening on the port :2525`
-- `go run . 2525 localhost` prints the usage message and exits
+**Verify:**
+- All three cases above produce the correct output before you write any server code.
+
+---
+
+## Milestone 2 — Start the TCP Server
+
+**Goal:** The server starts, listens on the given port, and accepts connections. Each connection is handled in its own goroutine.
+
+**Questions to answer:**
+- What function in the `net` package starts a TCP listener?
+- What does `listener.Accept()` do when no client is connected?
+- Why must each connection be handled in a separate goroutine?
+
+**Code Placeholder:**
+```go
+// server.go
+
+func startServer(port string) {
+    // 1. Call net.Listen to bind the server to the port
+    //    Handle the error — if the port is in use, the server must exit cleanly
+
+    // 2. Defer closing the listener
+
+    // 3. Loop forever:
+    //    - Accept the next incoming connection
+    //    - If accept fails, log the error and continue (don't crash)
+    //    - Launch handleClient(conn) in a new goroutine
+}
+```
 
 **Resources:**
-- Search: **"golang os.Args"**
-- Docs: https://pkg.go.dev/os#pkg-variables
-
----
-
-## Phase 2 — Starting the Server
-
-### Checkpoint 2.1 — Concept: How TCP Servers Work
-
-A TCP server does three things in a loop:
-
-1. **Listen** — bind to a port and tell the OS "I want connections here"
-2. **Accept** — wait (block) until a client connects, then get a `Conn` object
-3. **Handle** — do something with that connection (in a separate goroutine so the loop can accept the next client immediately)
-
-Read this before continuing:
+- https://pkg.go.dev/net#Listen
 - https://gobyexample.com/tcp-server
-- Docs: https://pkg.go.dev/net#Listen
+
+**Verify:**
+- Start the server and run `nc localhost 8989` in another terminal
+- The connection should succeed and hang — no crash on either side
 
 ---
 
-### Checkpoint 2.2 — Create the Listener
+## Milestone 3 — Client Struct and Shared State
+
+**Goal:** Define what a connected client looks like and create the shared variables all goroutines will access.
+
+**Questions to answer:**
+- What information does your program need to track for each connected client?
+- Why do `clients` and `messages` need to be protected by a mutex?
+- What is the maximum number of simultaneous connections allowed?
+
+**Code Placeholder:**
+```go
+// client.go
+
+type Client struct {
+    // The network connection for this client
+    // The client's chosen name
+}
+```
 
 ```go
 // server.go
-package main
-
-import (
-    "fmt"
-    "log"
-    "net"
-)
-
-func startServer(port string) {
-    listener, err := net.Listen("__", ":"+port)
-    if err != nil {
-        log.Fatal(__)
-    }
-    defer listener.Close()
-
-    fmt.Println("Listening on the port :" + port)
-
-    for {
-        conn, err := listener.Accept()
-        if err != nil {
-            log.Println(__)
-            continue
-        }
-        go handleClient(conn) // we'll build this next
-    }
-}
-```
-
-Questions to answer before filling the blanks:
-- What string goes in the first argument of `net.Listen()`? (TCP or UDP?)
-- What does `defer` do here? What happens if you forget it?
-- Why is `handleClient` launched with `go`? What breaks if you remove `go`?
-
-**Verify before moving on:**
-- Call `startServer("8989")` from `main()` and run the server
-- Open a new terminal and run `nc localhost 8989`
-- The connection should succeed and hang (nothing will happen yet — that is correct)
-
----
-
-## Phase 3 — The Client
-
-### Checkpoint 3.1 — Define a Client
-
-Every connected client needs a name and a connection. Define a struct:
-
-```go
-// client.go
-package main
-
-import "net"
-
-type Client struct {
-    conn net.Conn
-    name string
-}
-```
-
-You also need shared state that all goroutines can access. Add this to `server.go`:
-
-```go
-import "sync"
 
 var (
-    clients    []*Client
-    messages   []string
-    mu         sync.Mutex
-    maxClients = 10
+    // Slice of all currently connected clients
+    // Slice of all past messages (for history)
+    // A sync.Mutex to protect the above two
+    // A constant for maximum connections (10)
 )
 ```
 
-**Why `sync.Mutex`?** When two goroutines (two clients) try to modify `clients` at the same time, data corruption happens. The mutex makes sure only one goroutine touches shared state at a time.
-
-Read: https://gobyexample.com/mutexes
-
-Answer before moving on: What is a race condition? Write a one-sentence answer to yourself.
+**Resources:**
+- Search: **"golang sync Mutex example"**
+- https://gobyexample.com/mutexes
 
 ---
 
-### Checkpoint 3.2 — Welcome Banner
+## Milestone 4 — Welcome Banner and Name Prompt
 
-When a client connects, send this exact text before asking for their name:
+**Goal:** When a client connects, send the Linux logo and prompt them for a name. Reject empty names and re-prompt.
 
 ```
 Welcome to TCP-Chat!
+         _nnnn_
+        dGGGGMMb
+        ...
+[ENTER YOUR NAME]:
+```
+
+**Questions to answer:**
+- How do you send text to a client over a `net.Conn`?
+- What type does `conn.Write` expect?
+- How do you read what the client types back, line by line?
+- What condition should cause the name prompt to repeat?
+
+**Code Placeholder:**
+```go
+// client.go
+
+var logo = `Welcome to TCP-Chat!
          _nnnn_
         dGGGGMMb
        @p~qp~~qMb
@@ -218,386 +206,198 @@ Welcome to TCP-Chat!
    HZM            MMMM
    FqM            MMMM
  __| ".        |\dS"qML
- |    `.       | `' \Zq
+ |    ` + "`" + `    ` + "`" + `.       | ` + "`" + `' \Zq
 _)      \.___.,|     .'
 \____   )MMMMMP|   .'
-     `-'       `--'
-[ENTER YOUR NAME]: 
-```
+     ` + "`" + `-'       ` + "`" + `--' `
 
-Store this as a constant string. Then write a function:
-
-```go
 func welcomeClient(conn net.Conn) {
-    conn.Write([]byte(__________))
+    // Send the logo + "[ENTER YOUR NAME]: " to the client
 }
-```
-
-**Note:** `conn.Write()` takes `[]byte`, not a string. Look up how to convert.
-
-**Verify before moving on:**
-- Connect with `nc localhost 8989`
-- You should see the logo and the name prompt
-
----
-
-### Checkpoint 3.3 — Reading the Client's Name
-
-Now read what the client types. Use `bufio`:
-
-```go
-import (
-    "bufio"
-    "strings"
-)
 
 func getClientName(conn net.Conn) string {
-    reader := bufio.NewReader(conn)
-    for {
-        name, err := reader.ReadString('\n')
-        if err != nil {
-            return ""
-        }
-        name = strings.TrimSpace(name)
-        if __________ {
-            return name
-        }
-        conn.Write([]byte("[ENTER YOUR NAME]: "))
-    }
+    // Create a buffered reader for the connection
+
+    // Loop:
+    //   Read a line from the client
+    //   If there is a read error, return empty string
+    //   Trim whitespace from the line
+    //   If the name is non-empty, return it
+    //   Otherwise, re-send the prompt and loop again
 }
 ```
 
-Fill in the blank: what condition keeps the loop going until a valid name is given?
-
-**Why `bufio.NewReader`?** Network data arrives in chunks. `bufio` buffers the incoming bytes and lets you read line by line. Without it, you would have to manage raw byte slices yourself.
-
-Read: https://pkg.go.dev/bufio#NewReader
-
-**Verify before moving on:**
-- Connect with `nc localhost 8989`
-- Press Enter without typing a name — it should re-prompt
-- Type a name and press Enter — the server should print it (add a temporary `log.Println` in your code to verify)
+**Verify:**
+- `nc localhost 8989` shows the full logo and the name prompt
+- Pressing Enter without a name re-prompts
+- Typing a name and pressing Enter is accepted
 
 ---
 
-### Checkpoint 3.4 — Enforcing the Connection Limit
+## Milestone 5 — Connection Limit and Full Join Sequence
 
-Before accepting any client past the limit:
+**Goal:** Reject clients beyond the maximum. For accepted clients, run the full join flow in the right order.
 
+**Questions to answer:**
+- Why must you check the connection count before adding the client to the slice?
+- What is the correct order: send history before or after announcing the join to others?
+- Why should the client be added to the slice before receiving history but the announce go out after?
+
+**Code Placeholder:**
 ```go
+// server.go
+
 func handleClient(conn net.Conn) {
-    mu.Lock()
-    if len(clients) >= maxClients {
-        conn.Write([]byte("Chat is full. Try again later.\n"))
-        conn.Close()
-        mu.Unlock()
-        return
-    }
-    mu.Unlock()
+    // 1. Lock the mutex and check if len(clients) >= maxClients
+    //    If full: send a message to the client, close the connection, unlock, return
+    //    Unlock immediately after the check
 
-    // continue with welcome, name, etc.
-}
-```
+    // 2. Send the welcome banner
 
-**Why unlock before `return`?** If you use `defer mu.Unlock()`, the unlock happens when the entire function returns — which may be much later. Here you want to unlock immediately after the check. Understand the difference.
+    // 3. Get the client's name — loop until non-empty
+    //    If the connection drops during this step, close and return
 
-**Verify before moving on:**
-- Start the server
-- Write a small shell loop: `for i in $(seq 1 11); do nc localhost 8989 & done`
-- The 11th connection attempt should receive the "Chat is full" message
+    // 4. Create the Client struct
 
----
+    // 5. Lock → append to clients slice → unlock
 
-## Phase 4 — Joining the Chat
-
-### Checkpoint 4.1 — Full handleClient Flow
-
-Now put the full join sequence together. The order matters:
-
-```go
-func handleClient(conn net.Conn) {
-    // 1. Check capacity — reject and return if full
-    // 2. Send welcome banner
-    // 3. Get name — loop until non-empty
-    // 4. Create Client struct
-    // 5. Lock → add to clients slice → unlock
     // 6. Send message history to the new client
-    // 7. Broadcast "[name] has joined our chat..." to everyone else
-    // 8. Start listening for their messages (next phase)
+
+    // 7. Broadcast "NAME has joined our chat..." to everyone else
+
+    // 8. Start the message loop — call listenToClient(client)
 }
 ```
 
-Do not move to step 5 until step 3 is complete. Think about why.
-
 ---
 
-### Checkpoint 4.2 — Sending History
+## Milestone 6 — Message History and Broadcast
 
+**Goal:** New clients receive all past messages on join. Every message sent is delivered to all other connected clients.
+
+**Questions to answer:**
+- Why should saving to history and broadcasting happen inside the same mutex lock?
+- Should the sender receive their own broadcast? Why or why not?
+- When sending history to a new client, why do you need to lock the mutex?
+
+**Code Placeholder:**
 ```go
+// server.go
+
 func sendHistory(conn net.Conn) {
-    mu.Lock()
-    defer mu.Unlock()
-    for _, msg := range messages {
-        conn.Write([]byte(msg))
-    }
+    // Lock the mutex
+    // Send each message in the messages slice to conn
+    // Unlock
 }
-```
 
-**Why lock here?** Another goroutine could be appending to `messages` while you are ranging over it. That is a race condition.
-
-**Verify before moving on:**
-- Connect client A, send a few messages (just type them — broadcast isn't done yet, but you can add messages to the slice manually for testing)
-- Connect client B — they should see A's messages immediately on join
-
----
-
-### Checkpoint 4.3 — Broadcasting
-
-```go
 func broadcast(message string, sender *Client) {
-    mu.Lock()
-    defer mu.Unlock()
+    // Lock the mutex
 
-    messages = append(messages, message)
+    // Append message to the messages slice
 
-    for _, c := range clients {
-        if c != sender {
-            c.conn.Write([]byte(message))
-        }
-    }
+    // Loop through clients:
+    //   If the client is not the sender, write the message to their connection
+
+    // Unlock
 }
 ```
-
-Notice that `broadcast` both **saves** the message to history and **sends** it to all clients. This happens inside the same lock. Think about why that is important.
-
-**Verify before moving on:**
-- Connect two clients A and B
-- B should see the notification that A joined
 
 ---
 
-## Phase 5 — The Message Loop
+## Milestone 7 — The Message Loop
 
-### Checkpoint 5.1 — Reading and Sending Messages
+**Goal:** After joining, each client continuously sends messages. Messages are formatted with a timestamp and the client's name. Empty messages are ignored. When a client disconnects, the rest are notified.
 
-After a client joins, keep reading from their connection forever:
+**Questions to answer:**
+- What format string produces `2020-01-20 16:03:43` in Go?
+- How do you detect that a client has disconnected?
+- What should happen to the rest of the chat when one client disconnects?
 
+**Code Placeholder:**
 ```go
+// client.go
+
 func listenToClient(client *Client) {
-    reader := bufio.NewReader(client.conn)
+    // Create a buffered reader for client.conn
 
-    for {
-        message, err := reader.ReadString('\n')
-        if err != nil {
-            // Client disconnected
-            removeClient(client)
-            broadcast(client.name+" has left our chat...\n", nil)
-            return
-        }
+    // Loop forever:
+    //   Read a line from the client
+    //   If there is an error (disconnect):
+    //     Remove the client from the clients slice
+    //     Broadcast "NAME has left our chat..." with no sender
+    //     Return
 
-        message = strings.TrimSpace(message)
-        if message == "" {
-            // Show prompt again but do not broadcast
-            client.conn.Write([]byte(prompt(client.name)))
-            continue
-        }
+    //   Trim the message
+    //   If the message is empty: re-send the prompt and continue
 
-        timestamp := time.Now().Format("__________")
-        formatted := fmt.Sprintf("[%s][%s]:%s\n", __, __, __)
-
-        broadcast(formatted, client)
-        client.conn.Write([]byte(prompt(client.name)))
-    }
+    //   Format: "[TIMESTAMP][NAME]:MESSAGE\n"
+    //   Broadcast the formatted message (sender = client, so they don't get it back)
+    //   Re-send the prompt to the client themselves
 }
-```
 
-Fill in the blanks:
-- What format string makes Go produce `2020-01-20 16:03:43`? This is the trickiest part of Go's `time` package. Search: **"golang time format reference time"**
-- What do the three `__` in `Sprintf` refer to?
-
-A helper to generate the prompt:
-
-```go
-func prompt(name string) string {
-    return fmt.Sprintf("[%s][%s]:", time.Now().Format("__________"), name)
+func removeClient(client *Client) {
+    // Lock the mutex
+    // Find the client in the clients slice by comparing pointers
+    // Remove it using the append(s[:i], s[i+1:]...) pattern
+    // Close the connection
+    // Unlock
 }
 ```
 
 **Resources:**
-- https://pkg.go.dev/time#Time.Format
-- Search: **"golang time format 2006"** — read why Go uses that specific reference date
+- Search: **"golang time format 2006"**
+- Search: **"golang remove element from slice"**
 
-**Verify before moving on:**
-- Connect two clients
-- Client A sends a message
-- Client B sees `[timestamp][A]:message`
-- Client A sees their own prompt reprinted after sending
+**Verify:**
+- Connect two clients A and B
+- A sends a message → B sees `[timestamp][A]:message`
+- A sees their own prompt reprinted after sending
 - Empty messages do not appear for anyone
+- B disconnects → A sees "B has left our chat..."
+- A remains connected
 
 ---
 
-### Checkpoint 5.2 — Removing a Client
+## Milestone 8 — Race Condition Check
 
-```go
-func removeClient(client *Client) {
-    mu.Lock()
-    defer mu.Unlock()
+**Goal:** The server passes the Go race detector with no warnings.
 
-    for i, c := range clients {
-        if c == client {
-            clients = append(clients[:i], clients[i+1:]...)
-            break
-        }
-    }
-    client.conn.Close()
-}
-```
+**Questions to answer:**
+- Which shared variables could be accessed from multiple goroutines simultaneously?
+- Is every access to `clients` and `messages` inside a mutex lock?
 
-This is a standard Go slice removal pattern. Make sure you understand it before moving on.
-
-Search: **"golang remove element from slice"** and read the explanation, not just the code.
-
-**Verify before moving on:**
-- Connect clients A and B
-- Kill client A with `Ctrl+C`
-- Client B should see "A has left our chat..."
-- Client B should remain connected
-
----
-
-## Phase 6 — Wiring Everything Together
-
-### Checkpoint 6.1 — Call listenToClient from handleClient
-
-Add this as the last line of `handleClient`:
-
-```go
-listenToClient(client)
-```
-
-This call blocks — it runs the loop until the client disconnects. That is fine because `handleClient` is already running in its own goroutine.
-
----
-
-### Checkpoint 6.2 — Final main.go
-
-```go
-func main() {
-    port := "8989"
-    if len(os.Args) == 2 {
-        port = os.Args[1]
-    } else if len(os.Args) > 2 {
-        fmt.Println("[USAGE]: ./TCPChat $port")
-        return
-    }
-    startServer(port)
-}
-```
-
----
-
-## Phase 7 — Full System Test
-
-Run through every scenario manually before submission:
-
-| Scenario | Expected Result |
-|---|---|
-| `go run .` | Listens on :8989 |
-| `go run . 2525` | Listens on :2525 |
-| `go run . 2525 localhost` | Prints usage and exits |
-| Client connects | Sees logo and name prompt |
-| Client enters empty name | Re-prompted |
-| Client A connects, sends messages, then B connects | B sees A's history |
-| A sends a message | B sees it with timestamp and name |
-| A sends an empty message | Nobody sees it |
-| B disconnects | A sees "B has left our chat..." |
-| A stays connected after B leaves | A is still in the chat |
-| 11th client connects | Gets rejected |
-
----
-
-## Phase 8 — The Race Detector
-
-Run your server with:
-
+**Verify:**
 ```bash
 go run -race . 2525
 ```
+Connect several clients and send messages rapidly. Fix every race the detector reports before submission.
 
-Then connect multiple clients and send messages rapidly. If you have unprotected shared state, Go will report the race here. Fix every race the detector finds before submission.
-
-Search: **"golang race detector"** to understand the output format.
-
----
-
-## Phase 9 — Unit Tests
-
-The project requires test files. Write at least these:
-
-- A test that starts a server on a random port and verifies it accepts a connection
-- A test that verifies `removeClient` correctly removes a client from the slice
-- A test that verifies `broadcast` does not send a message back to the sender
-
-Read: https://go.dev/doc/tutorial/add-a-test
-
-```go
-// server_test.go
-package main
-
-import (
-    "testing"
-)
-
-func TestRemoveClient(t *testing.T) {
-    // Set up: create fake clients slice with 3 entries
-    // Call removeClient on the middle one
-    // Assert: slice now has 2 entries
-    // Assert: the removed client is gone
-}
-```
+**Resource:** Search: **"golang race detector"**
 
 ---
 
-## Debugging Reference
+## Debugging Checklist
 
-**Server freezes completely (deadlock)**
-Cause: You called a function that locks the mutex from inside code that already holds the lock.
-Fix: Never call `broadcast` while holding `mu`. Restructure the call order.
+Before asking for help, go through this:
 
-**Messages appear on the wrong line / overwrite user input**
-Cause: A broadcast arrives while the user is mid-typing.
-Fix: Before writing to a client, send `\r` to return the cursor to the start of the line, write the message, then reprint their prompt.
-
-**A dead client stays in the list**
-Cause: `ReadString` returned an error but you did not call `removeClient`.
-Fix: Check every error return from `reader.ReadString`.
-
-**`go run -race` reports a race**
-Cause: A slice or variable is being read and written from two goroutines without a lock.
-Fix: Wrap every access to `clients` and `messages` in `mu.Lock()` / `mu.Unlock()`.
+- Does the server freeze completely? You likely have a deadlock — a function that locks the mutex is being called from code that already holds the lock. Never call `broadcast` while holding `mu`.
+- Does `go run -race .` report a race? Find every unprotected access to `clients` or `messages`.
+- Does a new client not see history? Check that `sendHistory` is called before `listenToClient` but after the client is added to the slice.
+- Do messages appear on the wrong line or overwrite input? Print `\r` before a broadcast to the client, then reprint their prompt after.
+- Does a dead client stay in the list? Check that `removeClient` is called on every error path in `listenToClient`.
 
 ---
 
-## Bonus Challenges
-
-These are not required but will deepen your understanding:
-
-- Let clients type `/name NewName` to change their display name. Notify the group.
-- Save all messages to a `logs.txt` file using `os.OpenFile`. Search: **"golang append to file"**
-- Create named chat rooms. Clients type `/join roomname` to switch.
-
----
-
-## Key Packages Used
+## Key Packages
 
 | Package | What You Use It For | Docs |
 |---|---|---|
 | `net` | Listen, accept, read, write over TCP | https://pkg.go.dev/net |
 | `bufio` | Read lines from a network stream | https://pkg.go.dev/bufio |
-| `sync` | Mutex to protect shared state | https://pkg.go.dev/sync |
+| `sync` | Mutex for shared state | https://pkg.go.dev/sync |
 | `time` | Format message timestamps | https://pkg.go.dev/time |
 | `strings` | TrimSpace to clean user input | https://pkg.go.dev/strings |
-| `fmt` | Format messages | https://pkg.go.dev/fmt |
+| `fmt` | Format messages and prompts | https://pkg.go.dev/fmt |
 | `log` | Log server-side errors | https://pkg.go.dev/log |
 | `os` | Read command-line arguments | https://pkg.go.dev/os |
 
@@ -607,7 +407,7 @@ These are not required but will deepen your understanding:
 
 - [ ] Default port 8989 when no argument given
 - [ ] Usage message when more than one argument given
-- [ ] Linux logo sent to connecting clients
+- [ ] Linux logo and name prompt sent to connecting clients
 - [ ] Empty names rejected and re-prompted
 - [ ] Maximum 10 connections enforced
 - [ ] New client receives full message history on join
@@ -616,8 +416,8 @@ These are not required but will deepen your understanding:
 - [ ] Empty messages not broadcast
 - [ ] Messages formatted as `[timestamp][name]:message`
 - [ ] Remaining clients unaffected when one disconnects
-- [ ] Mutex used for all shared state
-- [ ] Goroutines used for concurrent client handling
+- [ ] Mutex protects all shared state
+- [ ] Goroutines used for each client connection
+- [ ] `go run -race .` reports no races
 - [ ] Errors handled on server and client side
-- [ ] `go run -race` reports no races
 - [ ] Unit tests written and passing
