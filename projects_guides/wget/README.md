@@ -1,1340 +1,585 @@
 # Wget Project Guide
 
-## 📋 Project Overview
-Build a command-line tool that replicates core functionalities of GNU wget - a utility for downloading files from the web. This project combines HTTP networking, concurrent programming, file system operations, HTML parsing, and command-line interface design. You'll learn how professional download managers work and implement features like progress tracking, rate limiting, background downloads, and website mirroring.
+> **Before you start:** Run `man wget` and use the real `wget` command for every feature before you build it. You cannot recreate something you have never seen.
 
 ---
 
-## 🎯 Learning Objectives
+## Objectives
 
-By completing this project, you will learn:
-1. **HTTP Protocol**: Making HTTP/HTTPS requests, handling responses
-2. **File I/O**: Downloading and saving files efficiently
-3. **Concurrency**: Downloading multiple files simultaneously
-4. **Progress Tracking**: Real-time download progress with bars
-5. **Rate Limiting**: Controlling download speed
-6. **HTML Parsing**: Extracting links and resources from web pages
-7. **Recursive Downloading**: Following links to mirror entire websites
-8. **Command-Line Interfaces**: Parsing flags and arguments
-9. **Error Handling**: Graceful handling of network errors
-10. **File System Operations**: Creating directories, managing paths
+By completing this project you will learn:
 
----
-
-## 📚 Prerequisites - Topics You Must Know
-
-### 1. **HTTP Basics**
-- HTTP methods: GET, POST
-- HTTP status codes: 200 OK, 404 Not Found, 500 Server Error
-- HTTP headers: Content-Length, Content-Type
-- Request/Response cycle
-- URLs and URL parsing
-
-### 2. **Go HTTP Package**
-- `net/http` package:
-  - `http.Get()` - Make GET requests
-  - `http.Client` - Custom HTTP clients
-  - `http.Response` - Handle responses
-  - `io.Copy()` - Copy response body to file
-  - `io.Reader` - Reading data streams
-
-### 3. **File Operations**
-- `os` package:
-  - `os.Create()` - Create files
-  - `os.OpenFile()` - Open with permissions
-  - `os.MkdirAll()` - Create directories
-  - `filepath.Join()` - Construct paths
-  - `filepath.Base()` - Get filename from path
-
-### 4. **Concurrency**
-- Goroutines: `go function()`
-- Channels: Communication between goroutines
-- WaitGroups: Waiting for goroutines to complete
-- Mutexes: Preventing race conditions
-
-### 5. **Command-Line Arguments**
-- `os.Args` - Access arguments
-- `flag` package:
-  - Defining flags
-  - Parsing flags
-  - Getting flag values
-- Custom flag parsing
-
-### 6. **Time Operations**
-- `time` package:
-  - `time.Now()` - Current time
-  - `time.Format()` - Format timestamps
-  - `time.Since()` - Calculate duration
-  - `time.Sleep()` - Delays
-
-### 7. **HTML Parsing** (for mirroring)
-- `golang.org/x/net/html` package:
-  - Parsing HTML documents
-  - Traversing DOM tree
-  - Finding tags and attributes
-
-### 8. **URL Operations**
-- `net/url` package:
-  - `url.Parse()` - Parse URLs
-  - `url.ResolveReference()` - Resolve relative URLs
-  - URL components: scheme, host, path
+1. **HTTP Protocol** — How HTTP requests and responses work, status codes, headers, and content types
+2. **File System Operations** — Creating directories, writing files, walking directory trees
+3. **I/O Streaming** — Reading data in chunks instead of all at once, which is essential for large files and progress tracking
+4. **Concurrency** — Running multiple downloads at the same time with goroutines and WaitGroups
+5. **Recursion** — Writing a recursive crawler that follows links without getting stuck in loops
+6. **CLI Argument Parsing** — Building a clean flag parser for a real-world tool
+7. **Rate Limiting** — Controlling how fast data flows using time and sleep
+8. **URL Manipulation** — Parsing, resolving, and transforming URLs
 
 ---
 
-## 🌐 Understanding HTTP Downloads
+## Prerequisites — Topics You Must Know Before Starting
 
-### **How HTTP Download Works**
+### 1. Go Basics
+- Functions, structs, error handling
+- `os.Args` — reading command-line arguments
+- `os.Create`, `os.MkdirAll` — creating files and directories
 
-```
-Client (Your Program)          Server
-       |                          |
-       |  1. HTTP GET Request    |
-       |------------------------>|
-       |                          |
-       |  2. HTTP Response       |
-       |    Status: 200 OK       |
-       |    Content-Length: 1024 |
-       |    Content-Type: image  |
-       |<------------------------|
-       |                          |
-       |  3. Download Data       |
-       |    (Stream of bytes)    |
-       |<------------------------|
-       |<------------------------|
-       |<------------------------|
-       |  4. Save to file        |
-```
+### 2. HTTP in Go
+- How to make a GET request with `net/http`
+- What `http.Response` contains: status code, headers, body
+- How to read a response body as a stream
 
-**Key Concepts**:
-1. **Request**: Ask server for a resource (URL)
-2. **Response**: Server replies with status and headers
-3. **Body Stream**: Actual file content comes as stream
-4. **Save**: Write stream to local file
+### 3. Concurrency
+- Goroutines (`go func()`)
+- `sync.WaitGroup` — waiting for multiple goroutines to finish
+- `sync.Mutex` — protecting shared data from simultaneous access
+
+### 4. Time and Formatting
+- `time.Now()` and `time.Since()`
+- Go's reference time format — search: **"golang time format 2006"**
+
+### 5. Strings and Paths
+- `strings.HasPrefix`, `strings.HasSuffix`, `strings.TrimPrefix`
+- `path/filepath.Base`, `filepath.Join`, `filepath.Rel`
+- `net/url.Parse`, `url.ResolveReference`
+
+**If any of these are unfamiliar, read about them before writing any code.**
 
 ---
 
-## 🛠️ Step-by-Step Implementation Guide
+## Project Structure
 
-### **Phase 1: Basic HTTP Download** 📥
-
-#### Step 1: Project Setup
 ```
 wget/
-├── main.go
-├── downloader/
-│   └── downloader.go
-├── progress/
-│   └── progress.go
-├── utils/
-│   └── utils.go
+├── main.go        — entry point, argument parsing
+├── download.go    — single file download logic
+├── progress.go    — progress bar
+├── mirror.go      — website mirroring
 └── go.mod
 ```
 
-#### Step 2: Initialize Module
-```bash
-go mod init wget
-# Install HTML parsing library
-go get golang.org/x/net/html
-```
-
-#### Step 3: Basic Download Function
-In `downloader/downloader.go`:
-
-```go
-package downloader
-
-import (
-    "fmt"
-    "io"
-    "net/http"
-    "os"
-)
-
-// DownloadFile downloads a file from URL and saves it
-func DownloadFile(url, filepath string) error {
-    // 1. Make HTTP GET request
-    // 2. Check response status
-    // 3. Get Content-Length
-    // 4. Create output file
-    // 5. Copy response body to file
-    // 6. Return any errors
-}
-```
-
-**Implementation Steps**:
-
-**A. Make HTTP Request**
-```go
-resp, err := http.Get(url)
-if err != nil {
-    return fmt.Errorf("request failed: %w", err)
-}
-defer resp.Body.Close()
-```
-
-**B. Check Status**
-```go
-if resp.StatusCode != http.StatusOK {
-    return fmt.Errorf("bad status: %s", resp.Status)
-}
-```
-
-**C. Create File**
-```go
-out, err := os.Create(filepath)
-if err != nil {
-    return err
-}
-defer out.Close()
-```
-
-**D. Copy Data**
-```go
-_, err = io.Copy(out, resp.Body)
-return err
-```
-
-**Test**:
-```go
-func main() {
-    url := "https://example.com/file.txt"
-    err := DownloadFile(url, "file.txt")
-    if err != nil {
-        fmt.Println("Error:", err)
-    }
-}
-```
-
 ---
 
-#### Step 4: Extract Filename from URL
-Create utility function:
+## Milestone 1 — Download a Single File
 
-```go
-func GetFilenameFromURL(url string) string {
-    // Parse URL
-    // Get path
-    // Extract filename using filepath.Base()
-    // Handle query parameters
-}
+**Goal:**
 ```
-
-**Implementation**:
-```go
-import (
-    "net/url"
-    "path/filepath"
-    "strings"
-)
-
-func GetFilenameFromURL(urlStr string) string {
-    u, err := url.Parse(urlStr)
-    if err != nil {
-        return "download"
-    }
-    
-    // Get path, remove query
-    path := strings.Split(u.Path, "?")[0]
-    
-    // Extract filename
-    filename := filepath.Base(path)
-    
-    if filename == "" || filename == "/" {
-        return "index.html"
-    }
-    
-    return filename
-}
+go run . https://pbs.twimg.com/media/EMtmPFLWkAA8CIS.jpg
 ```
-
-**Test Cases**:
+Must produce this exact output:
 ```
-"https://example.com/file.zip" → "file.zip"
-"https://example.com/path/to/image.jpg" → "image.jpg"
-"https://example.com/" → "index.html"
-"https://example.com/file?query=1" → "file"
-```
-
----
-
-### **Phase 2: Display Information** 📊
-
-#### Step 5: Implement Timestamp Formatting
-```go
-func FormatTimestamp(t time.Time) string {
-    // Format as "yyyy-mm-dd hh:mm:ss"
-    // Use time.Format() with layout
-}
-```
-
-**Go Time Format**:
-```go
-// Go uses reference time: Mon Jan 2 15:04:05 MST 2006
-layout := "2006-01-02 15:04:05"
-return t.Format(layout)
-```
-
-**Test**:
-```go
-now := time.Now()
-fmt.Println("start at", FormatTimestamp(now))
-// Output: start at 2024-01-15 14:30:45
-```
-
----
-
-#### Step 6: Display Download Information
-```go
-type DownloadInfo struct {
-    URL           string
-    Filename      string
-    ContentLength int64
-    Status        string
-}
-
-func DisplayInfo(info DownloadInfo) {
-    // Print start time
-    // Print status
-    // Print content size (with MB/GB formatting)
-    // Print filename
-}
-```
-
-**Size Formatting**:
-```go
-func FormatSize(bytes int64) string {
-    const (
-        KB = 1024
-        MB = KB * 1024
-        GB = MB * 1024
-    )
-    
-    switch {
-    case bytes >= GB:
-        return fmt.Sprintf("%.2f GB", float64(bytes)/float64(GB))
-    case bytes >= MB:
-        return fmt.Sprintf("%.2f MB", float64(bytes)/float64(MB))
-    case bytes >= KB:
-        return fmt.Sprintf("%.2f KB", float64(bytes)/float64(KB))
-    default:
-        return fmt.Sprintf("%d bytes", bytes)
-    }
-}
-```
-
-**Output Example**:
-```
-start at 2024-01-15 14:30:45
+start at 2017-10-14 03:46:06
 sending request, awaiting response... status 200 OK
 content size: 56370 [~0.06MB]
-saving file to: ./file.jpg
+saving file to: ./EMtmPFLWkAA8CIS.jpg
+ 55.05 KiB / 55.05 KiB [====================================] 100.00% 1.24 MiB/s 0s
+
+Downloaded [https://pbs.twimg.com/media/EMtmPFLWkAA8CIS.jpg]
+finished at 2017-10-14 03:46:07
 ```
+
+**Questions to answer before writing anything:**
+- How do you make a GET request and read the response in Go?
+- What does `resp.ContentLength` return if the server does not report it?
+- How do you read a response body in chunks to track how much has been downloaded?
+- How do you print a line that updates itself in place without creating a new line?
+- What format string produces `2017-10-14 03:46:06` in Go?
+
+**Code Placeholder:**
+```go
+// download.go
+
+func download(url string, outputName string, outputPath string, rateLimit int64) error {
+    // 1. Record and print start time
+
+    // 2. Make the HTTP GET request
+    //    Print "sending request, awaiting response..."
+
+    // 3. Check if status is 200 OK
+    //    If not, print the status and return an error
+
+    // 4. Print content size in bytes and MB
+
+    // 5. Determine the save path (path + filename)
+    //    Print "saving file to: ..."
+
+    // 6. Open/create the destination file
+
+    // 7. Read the response body in chunks
+    //    After each chunk: write to file, update progress, apply rate limit if set
+
+    // 8. Print blank line, "Downloaded [url]", and finish time
+}
+```
+
+**Resources:**
+- Search: **"golang net/http GET request"**
+- Search: **"golang read http response body chunks"**
+- Search: **"golang time format layout reference time"**
+- https://pkg.go.dev/net/http
+
+**Verify:** Run with a real URL and compare output character by character against the spec.
 
 ---
 
-### **Phase 3: Progress Bar** 📈
+## Milestone 2 — Progress Bar
 
-#### Step 7: Implement Progress Tracking
-Create a progress tracker:
+**Goal:** While downloading, print a single line that updates in place:
+```
+ 55.05 KiB / 55.05 KiB [====================================] 100.00% 1.24 MiB/s 0s
+```
 
+**Questions to answer:**
+- How do you overwrite the current terminal line without moving to a new one?
+- How do you calculate download speed and estimated time remaining?
+- How do you format bytes into KiB or MiB depending on size?
+
+**Code Placeholder:**
 ```go
-type ProgressReader struct {
-    Reader      io.Reader
-    Total       int64
-    Current     int64
-    StartTime   time.Time
-    LastUpdate  time.Time
-}
+// progress.go
 
-func (pr *ProgressReader) Read(p []byte) (int, error) {
-    // Read from underlying reader
-    // Update current bytes
-    // Display progress
-    // Return bytes read
+func printProgress(downloaded int64, total int64, elapsed time.Duration) {
+    // 1. Calculate percentage
+
+    // 2. Calculate download speed (bytes per second)
+
+    // 3. Calculate estimated time remaining
+
+    // 4. Build the progress bar string using = and spaces
+
+    // 5. Format downloaded and total as KiB or MiB
+
+    // 6. Print everything on one line using \r (not \n)
 }
 ```
 
-**Key Concepts**:
-- Wrap `io.Reader` to track bytes read
-- Update progress after each read
-- Calculate percentage and speed
-- Display progress bar
-
-**Implementation**:
-```go
-func (pr *ProgressReader) Read(p []byte) (int, error) {
-    n, err := pr.Reader.Read(p)
-    pr.Current += int64(n)
-    
-    // Update progress display (throttle updates)
-    if time.Since(pr.LastUpdate) > 100*time.Millisecond {
-        pr.DisplayProgress()
-        pr.LastUpdate = time.Now()
-    }
-    
-    return n, err
-}
-
-func (pr *ProgressReader) DisplayProgress() {
-    // Calculate percentage
-    percent := float64(pr.Current) / float64(pr.Total) * 100
-    
-    // Calculate speed
-    elapsed := time.Since(pr.StartTime).Seconds()
-    speed := float64(pr.Current) / elapsed
-    
-    // Calculate remaining time
-    remaining := float64(pr.Total-pr.Current) / speed
-    
-    // Display progress bar
-    // Format: downloaded / total [======>    ] percent% speed remaining
-}
-```
+**Verify:** Watch the bar fill from 0% to 100% on a single line without scrolling.
 
 ---
 
-#### Step 8: Create Progress Bar Display
+## Milestone 3 — Non-200 Responses
+
+**Goal:** If the server returns anything other than 200, print the status and exit. No file is created.
+
+**Code Placeholder:**
 ```go
-func CreateProgressBar(current, total int64, width int) string {
-    // Calculate filled portion
-    // Create bar with = for filled, spaces for empty
-    // Add > at the end of filled portion
-}
+// In download.go, after making the request
+
+    // Check status code
+    // If not 200: print the status, return an error, do not proceed
 ```
 
-**Implementation**:
-```go
-func CreateProgressBar(current, total int64, width int) string {
-    if total <= 0 {
-        return ""
-    }
-    
-    percent := float64(current) / float64(total)
-    filled := int(percent * float64(width))
-    
-    bar := ""
-    for i := 0; i < width; i++ {
-        if i < filled-1 {
-            bar += "="
-        } else if i == filled-1 {
-            bar += ">"
-        } else {
-            bar += " "
-        }
-    }
-    
-    return "[" + bar + "]"
-}
-```
-
-**Example Output**:
-```
- 55.05 KiB / 55.05 KiB [==================================>] 100.00% 1.24 MiB/s 0s
-```
+**Verify:** Try a URL that returns 404. Your program should exit cleanly with a message.
 
 ---
 
-### **Phase 4: Command-Line Flags** 🚩
+## Milestone 4 — Flag `-O` (Save Under a Different Name)
 
-#### Step 9: Parse Command-Line Arguments
+**Goal:**
+```
+go run . -O=meme.jpg <url>
+```
+Saves the file as `meme.jpg` instead of the name from the URL.
+
+**Questions to answer:**
+- Can Go's built-in `flag` package handle `-O=value`? Test it before deciding.
+- How do you extract the filename from a URL for when `-O` is not given?
+
+**Code Placeholder:**
 ```go
+// main.go or flags.go
+
 type Config struct {
-    URL          string
-    OutputFile   string
-    OutputDir    string
-    Background   bool
-    RateLimit    int64  // bytes per second
-    InputFile    string
-    Mirror       bool
-    Reject       []string
-    Exclude      []string
+    URL        string
+    OutputName string  // -O flag
+    OutputPath string  // -P flag (next milestone)
+    RateLimit  int64   // --rate-limit flag
+    Background bool    // -B flag
+    InputFile  string  // -i flag
+    Mirror     bool    // --mirror flag
+    Reject     []string
+    Exclude    []string
     ConvertLinks bool
 }
 
-func ParseFlags() (*Config, error) {
-    // Use flag package or custom parsing
-    // Handle all flags: -B, -O, -P, --rate-limit, -i, --mirror, etc.
-    // Validate arguments
-    // Return config
+func parseArgs(args []string) Config {
+    // Loop through args
+    // For each arg:
+    //   - Check if it matches a known flag pattern (e.g. strings.HasPrefix(arg, "-O="))
+    //   - Extract the value after "="
+    //   - Store in the correct field of Config
+    //   - If it does not match any flag, treat it as the URL
 }
 ```
 
-**Flag Package Example**:
-```go
-import "flag"
-
-func ParseFlags() *Config {
-    cfg := &Config{}
-    
-    flag.StringVar(&cfg.OutputFile, "O", "", "output filename")
-    flag.StringVar(&cfg.OutputDir, "P", ".", "output directory")
-    flag.BoolVar(&cfg.Background, "B", false, "background download")
-    // ... more flags
-    
-    flag.Parse()
-    
-    // Get URL from remaining args
-    args := flag.Args()
-    if len(args) > 0 {
-        cfg.URL = args[0]
-    }
-    
-    return cfg
-}
-```
-
-**Custom Flag Parsing** (for `--rate-limit=400k`):
-```go
-func ParseRateLimit(s string) (int64, error) {
-    // Parse "400k" or "2M" format
-    // k = 1024 bytes/sec
-    // M = 1024*1024 bytes/sec
-}
-```
-
-**Test**:
+**Verify:**
 ```bash
-go run . -O=output.jpg -P=~/Downloads/ https://example.com/file.jpg
+go run . -O=meme.jpg <url>
+ls -l meme.jpg
 ```
 
 ---
 
-### **Phase 5: Background Download** 🌙
+## Milestone 5 — Flag `-P` (Save to a Directory)
 
-#### Step 10: Implement Background Mode
+**Goal:**
+```
+go run . -P=~/Downloads/ -O=meme.jpg <url>
+```
+Saves the file into the specified directory.
+
+**Questions to answer:**
+- How do you expand `~` to the real home directory in Go?
+- What happens if the directory does not exist?
+- How do you combine `-P` and `-O` into a final save path?
+
+**Code Placeholder:**
 ```go
-func DownloadInBackground(url string, config Config) error {
-    // 1. Open log file "wget-log"
-    // 2. Redirect stdout to log file
-    // 3. Start download
-    // 4. Write all output to log
+func resolveSavePath(cfg Config) string {
+    // 1. Determine the filename:
+    //    Use cfg.OutputName if set, otherwise extract from URL
+
+    // 2. Determine the directory:
+    //    Use cfg.OutputPath if set, otherwise use "./"
+
+    // 3. Expand "~/" to the real home directory if present
+
+    // 4. Join directory and filename into the final path
 }
 ```
 
-**Implementation**:
-```go
-func RunBackgroundDownload(url string) error {
-    fmt.Println("Output will be written to \"wget-log\".")
-    
-    // Create log file
-    logFile, err := os.Create("wget-log")
-    if err != nil {
-        return err
-    }
-    defer logFile.Close()
-    
-    // Redirect output
-    oldStdout := os.Stdout
-    os.Stdout = logFile
-    
-    // Perform download
-    err = Download(url)
-    
-    // Restore stdout
-    os.Stdout = oldStdout
-    
-    return err
-}
-```
-
-**Alternative** (using goroutine):
-```go
-func RunBackgroundDownload(url string) {
-    go func() {
-        // Download in goroutine
-        // All output goes to log file
-    }()
-    
-    fmt.Println("Output will be written to \"wget-log\".")
-    // Main program exits, but goroutine continues
-}
-```
-
----
-
-### **Phase 6: Rate Limiting** 🐌
-
-#### Step 11: Implement Rate Limiter
-Create a rate-limited reader:
-
-```go
-type RateLimitedReader struct {
-    Reader    io.Reader
-    RateLimit int64 // bytes per second
-    LastRead  time.Time
-}
-
-func (r *RateLimitedReader) Read(p []byte) (int, error) {
-    // Calculate how much we can read based on time elapsed
-    // Sleep if we're reading too fast
-    // Read from underlying reader
-}
-```
-
-**Implementation**:
-```go
-func (r *RateLimitedReader) Read(p []byte) (int, error) {
-    if r.RateLimit <= 0 {
-        return r.Reader.Read(p)
-    }
-    
-    // Calculate time since last read
-    if !r.LastRead.IsZero() {
-        elapsed := time.Since(r.LastRead)
-        expectedDuration := time.Duration(int64(len(p)) * int64(time.Second) / r.RateLimit)
-        
-        if expectedDuration > elapsed {
-            time.Sleep(expectedDuration - elapsed)
-        }
-    }
-    
-    n, err := r.Reader.Read(p)
-    r.LastRead = time.Now()
-    
-    return n, err
-}
-```
-
-**Algorithm**:
-```
-Rate: 400 KB/s = 400,000 bytes/sec
-Read buffer: 8192 bytes
-
-Time per buffer = 8192 / 400000 = 0.02048 seconds
-If we read faster, sleep the difference
-```
-
-**Test**:
+**Verify:**
 ```bash
-# Should take ~2.5 seconds for 1MB at 400k/s
-go run . --rate-limit=400k https://example.com/1mb-file.zip
+go run . -P=/tmp/ -O=test.jpg <url>
+ls -l /tmp/test.jpg
 ```
 
 ---
 
-### **Phase 7: Multiple Downloads** 📚
+## Milestone 6 — Flag `--rate-limit`
 
-#### Step 12: Read URLs from File
+**Goal:**
+```
+go run . --rate-limit=400k <url>
+go run . --rate-limit=2M <url>
+```
+Limits download speed to the given rate.
+
+**Questions to answer:**
+- How do you convert `400k` and `2M` to bytes per second?
+- You are reading in chunks. After each chunk, how do you calculate how long to sleep to stay at the target speed?
+
+**Code Placeholder:**
 ```go
-func ReadURLsFromFile(filename string) ([]string, error) {
-    // Open file
-    // Read line by line
-    // Trim whitespace
-    // Skip empty lines
-    // Return slice of URLs
+func parseRateLimit(s string) int64 {
+    // Check if s ends with "k" → multiply by 1024
+    // Check if s ends with "M" → multiply by 1024 * 1024
+    // Otherwise treat as raw bytes per second
+}
+
+func throttle(bytesJustWritten int64, rateLimit int64) {
+    // Calculate how long this chunk should have taken at the given rate
+    // Sleep for that duration
 }
 ```
 
-**Implementation**:
-```go
-import "bufio"
-
-func ReadURLsFromFile(filename string) ([]string, error) {
-    file, err := os.Open(filename)
-    if err != nil {
-        return nil, err
-    }
-    defer file.Close()
-    
-    var urls []string
-    scanner := bufio.NewScanner(file)
-    
-    for scanner.Scan() {
-        line := strings.TrimSpace(scanner.Text())
-        if line != "" && !strings.HasPrefix(line, "#") {
-            urls = append(urls, line)
-        }
-    }
-    
-    return urls, scanner.Err()
-}
-```
+**Verify:** Download a large file with `--rate-limit=50k`. The progress bar speed should stay near 50 KiB/s.
 
 ---
 
-#### Step 13: Download Multiple Files Concurrently
+## Milestone 7 — Flag `-B` (Background Download)
+
+**Goal:**
+```
+go run . -B <url>
+Output will be written to "wget-log".
+$             ← shell returns immediately
+```
+The download continues in the background. All output goes to `wget-log`.
+
+**Questions to answer:**
+- How do you re-launch your own program as a background process?
+- How do you redirect a child process's stdout to a file?
+- What is the difference between `cmd.Run()` and `cmd.Start()`?
+
+**Code Placeholder:**
 ```go
-func DownloadMultiple(urls []string) error {
-    // Use WaitGroup to wait for all downloads
-    // Start goroutine for each URL
-    // Track completion
+func runInBackground(args []string) {
+    // 1. Print "Output will be written to \"wget-log\"."
+
+    // 2. Build a new args slice — same as current args but without "-B"
+
+    // 3. Create (or truncate) the file "wget-log"
+
+    // 4. Create an exec.Command for os.Args[0] with the new args
+    //    Set its Stdout and Stderr to the log file
+
+    // 5. Start the command (do not wait for it)
+
+    // 6. Return — the parent process exits, child continues
 }
 ```
 
-**Implementation**:
-```go
-import "sync"
+**Resource:** Search: **"golang os/exec Start background process"**
 
-func DownloadMultiple(urls []string) error {
-    var wg sync.WaitGroup
-    errors := make(chan error, len(urls))
-    
-    for _, url := range urls {
-        wg.Add(1)
-        
-        go func(u string) {
-            defer wg.Done()
-            
-            filename := GetFilenameFromURL(u)
-            err := DownloadFile(u, filename)
-            
-            if err != nil {
-                errors <- err
-            } else {
-                fmt.Printf("finished %s\n", filename)
-            }
-        }(url)
-    }
-    
-    wg.Wait()
-    close(errors)
-    
-    // Check for errors
-    for err := range errors {
-        if err != nil {
-            return err
-        }
-    }
-    
-    return nil
-}
-```
-
-**Key Concepts**:
-- **WaitGroup**: Wait for all goroutines to finish
-- **Goroutines**: Each download runs independently
-- **Channel**: Collect errors from goroutines
-- **Defer**: Ensure WaitGroup.Done() is called
-
-**Test**:
+**Verify:**
 ```bash
-echo "https://example.com/file1.zip" > download.txt
-echo "https://example.com/file2.zip" >> download.txt
+go run . -B <url>   # returns immediately
+cat wget-log        # shows full output after a moment
+```
+
+---
+
+## Milestone 8 — Flag `-i` (Multiple Concurrent Downloads)
+
+**Goal:**
+```
 go run . -i=download.txt
 ```
+Reads URLs from the file and downloads all of them at the same time.
 
----
+**Questions to answer:**
+- How do you read a text file line by line in Go?
+- How do you wait for multiple goroutines to all finish?
+- What is the goroutine loop variable capture bug and why will it affect you here?
 
-### **Phase 8: Website Mirroring** 🪞
-
-#### Step 14: Download and Parse HTML
+**Code Placeholder:**
 ```go
-func DownloadHTML(url string) (string, error) {
-    // Download HTML content
-    // Return as string
-}
+func downloadMultiple(inputFile string, cfg Config) {
+    // 1. Open and read the file line by line
+    //    Collect all non-empty URLs into a slice
 
-func ParseHTML(html string) ([]string, error) {
-    // Parse HTML using golang.org/x/net/html
-    // Find all <a>, <link>, <img> tags
-    // Extract href and src attributes
-    // Return list of URLs
+    // 2. Create a sync.WaitGroup
+
+    // 3. For each URL:
+    //    - Add 1 to the WaitGroup
+    //    - Launch a goroutine that:
+    //        a. Calls download() with that URL
+    //        b. Calls wg.Done() when finished
+    //    - Be careful: pass the URL as a function argument, do not capture it directly
+
+    // 4. Wait for all goroutines to finish
 }
 ```
 
-**HTML Parsing Example**:
-```go
-import "golang.org/x/net/html"
+**Resources:**
+- Search: **"golang sync WaitGroup example"**
+- Search: **"golang goroutine loop variable capture"** — read this before writing the loop
 
-func ParseHTML(htmlContent string) ([]string, error) {
-    doc, err := html.Parse(strings.NewReader(htmlContent))
-    if err != nil {
-        return nil, err
-    }
-    
-    var urls []string
-    var traverse func(*html.Node)
-    
-    traverse = func(n *html.Node) {
-        if n.Type == html.ElementNode {
-            // Check for <a href="...">
-            if n.Data == "a" {
-                for _, attr := range n.Attr {
-                    if attr.Key == "href" {
-                        urls = append(urls, attr.Val)
-                    }
-                }
-            }
-            
-            // Check for <img src="...">
-            if n.Data == "img" {
-                for _, attr := range n.Attr {
-                    if attr.Key == "src" {
-                        urls = append(urls, attr.Val)
-                    }
-                }
-            }
-            
-            // Check for <link href="...">
-            if n.Data == "link" {
-                for _, attr := range n.Attr {
-                    if attr.Key == "href" {
-                        urls = append(urls, attr.Val)
-                    }
-                }
-            }
-        }
-        
-        // Traverse children
-        for c := n.FirstChild; c != nil; c = c.NextSibling {
-            traverse(c)
-        }
-    }
-    
-    traverse(doc)
-    return urls, nil
+**Verify:** Put 3 URLs in a file. All 3 download simultaneously and all finish before the program exits.
+
+---
+
+## Milestone 9 — Mirror a Website (`--mirror`)
+
+**Goal:**
+```
+go run . --mirror https://example.com
+```
+Downloads the entire site into a folder named after the domain, preserving directory structure.
+
+This milestone is the most complex. Solve each step completely before moving to the next.
+
+---
+
+### Step 9.1 — Save One Page with Correct Path
+
+**Questions to answer:**
+- How do you turn `https://example.com/about/team` into a local path like `example.com/about/team.html`?
+- What do you save when the URL path ends in `/` or is empty?
+
+**Code Placeholder:**
+```go
+func buildLocalPath(host string, urlPath string) string {
+    // 1. Start with the host as the root folder
+
+    // 2. Append the URL path
+
+    // 3. If the path ends in "/" or is empty, append "index.html"
+
+    // 4. If the path has no file extension, append "/index.html"
+
+    // 5. Return the final local path
 }
 ```
 
 ---
 
-#### Step 15: Resolve Relative URLs
+### Step 9.2 — Extract Links from HTML
+
+**Questions to answer:**
+- How do you parse HTML token by token in Go?
+- How do you resolve a relative URL like `/about` into `https://example.com/about`?
+
+**Code Placeholder:**
 ```go
-func ResolveURL(baseURL, relativeURL string) (string, error) {
-    // Parse base URL
-    // Parse relative URL
-    // Resolve using url.ResolveReference
-    // Return absolute URL
+func extractLinks(body io.Reader, baseURL *url.URL) []string {
+    // 1. Create an HTML tokenizer from the body
+
+    // 2. Loop over tokens until ErrorToken (end of document)
+
+    // 3. For each StartTag or SelfClosingTag token:
+    //    - If tag is "a" or "link": look for "href" attribute
+    //    - If tag is "img" or "script": look for "src" attribute
+    //    - Resolve the found value against baseURL
+    //    - Add to results if non-empty and not mailto: or javascript:
+
+    // 4. Return all collected links
 }
 ```
 
-**Implementation**:
-```go
-func ResolveURL(baseURL, relativeURL string) (string, error) {
-    base, err := url.Parse(baseURL)
-    if err != nil {
-        return "", err
-    }
-    
-    rel, err := url.Parse(relativeURL)
-    if err != nil {
-        return "", err
-    }
-    
-    // Resolve relative to base
-    absolute := base.ResolveReference(rel)
-    return absolute.String(), nil
-}
-```
-
-**Examples**:
-```
-Base: https://example.com/page/index.html
-Relative: image.jpg
-Result: https://example.com/page/image.jpg
-
-Base: https://example.com/page/index.html
-Relative: /css/style.css
-Result: https://example.com/css/style.css
-
-Base: https://example.com/
-Relative: ../other/file.js
-Result: https://example.com/other/file.js
-```
+**Resources:**
+- Search: **"golang x/net/html tokenizer example"**
+- Search: **"golang url ResolveReference"**
+- `go get golang.org/x/net/html`
 
 ---
 
-#### Step 16: Recursive Download (Mirroring)
-```go
-func MirrorWebsite(startURL string, options MirrorOptions) error {
-    // 1. Create directory for website
-    // 2. Keep track of visited URLs (avoid loops)
-    // 3. Download page
-    // 4. Parse HTML for links
-    // 5. Filter links based on options (reject, exclude)
-    // 6. Recursively download linked resources
-    // 7. Save files in proper directory structure
-}
-```
+### Step 9.3 — Recursive Crawl Without Infinite Loops
 
-**Data Structures**:
-```go
-type MirrorOptions struct {
-    BaseURL      string
-    OutputDir    string
-    Reject       []string   // File extensions to skip
-    Exclude      []string   // Paths to skip
-    ConvertLinks bool
-    MaxDepth     int
-}
+**Questions to answer:**
+- How do you prevent visiting the same URL twice across concurrent goroutines?
+- How do you make sure you only follow links on the same domain?
 
+**Code Placeholder:**
+```go
 type Crawler struct {
-    Visited   map[string]bool
-    Queue     []string
-    Options   MirrorOptions
-    mu        sync.Mutex
+    // base URL of the site being mirrored
+    // map of visited URLs (needs a mutex to be safe across goroutines)
+    // config (for -R, -X, --convert-links)
 }
-```
 
-**Algorithm**:
-```
-1. Start with initial URL
-2. Add to queue
-3. While queue not empty:
-   a. Take URL from queue
-   b. If already visited, skip
-   c. Mark as visited
-   d. Download resource
-   e. If HTML, parse for links
-   f. Filter links (reject, exclude)
-   g. Add valid links to queue
-   h. Save file to proper location
-```
-
-**Implementation Structure**:
-```go
-func (c *Crawler) Mirror() error {
-    for len(c.Queue) > 0 {
-        currentURL := c.Queue[0]
-        c.Queue = c.Queue[1:]
-        
-        if c.IsVisited(currentURL) {
-            continue
-        }
-        
-        c.MarkVisited(currentURL)
-        
-        // Download resource
-        content, err := c.Download(currentURL)
-        if err != nil {
-            continue
-        }
-        
-        // Save to file
-        filepath := c.URLToFilepath(currentURL)
-        c.SaveFile(filepath, content)
-        
-        // If HTML, extract and queue links
-        if c.IsHTML(currentURL) {
-            links := c.ExtractLinks(content, currentURL)
-            filtered := c.FilterLinks(links)
-            c.AddToQueue(filtered)
-        }
-    }
-    
-    return nil
-}
-```
-
----
-
-#### Step 17: Filter Links
-```go
-func (c *Crawler) FilterLinks(links []string) []string {
-    var filtered []string
-    
-    for _, link := range links {
-        // Check if should reject (file extension)
-        if c.ShouldReject(link) {
-            continue
-        }
-        
-        // Check if should exclude (path)
-        if c.ShouldExclude(link) {
-            continue
-        }
-        
-        // Check if same domain
-        if !c.IsSameDomain(link) {
-            continue
-        }
-        
-        filtered = append(filtered, link)
-    }
-    
-    return filtered
-}
-```
-
-**Reject Implementation**:
-```go
-func (c *Crawler) ShouldReject(url string) bool {
-    for _, ext := range c.Options.Reject {
-        if strings.HasSuffix(url, ext) {
-            return true
-        }
-    }
-    return false
-}
-```
-
-**Exclude Implementation**:
-```go
-func (c *Crawler) ShouldExclude(url string) bool {
-    u, err := url.Parse(url)
-    if err != nil {
-        return false
-    }
-    
-    for _, path := range c.Options.Exclude {
-        if strings.HasPrefix(u.Path, path) {
-            return true
-        }
-    }
-    return false
-}
-```
-
----
-
-#### Step 18: Create Directory Structure
-```go
-func (c *Crawler) URLToFilepath(url string) string {
-    // Parse URL
-    // Create directory structure based on URL path
-    // Use domain as base directory
-    // Example: https://example.com/css/style.css
-    //       -> example.com/css/style.css
-}
-```
-
-**Implementation**:
-```go
-func URLToFilepath(baseDir, urlStr string) string {
-    u, err := url.Parse(urlStr)
-    if err != nil {
-        return filepath.Join(baseDir, "index.html")
-    }
-    
-    // Use domain as directory
-    domain := u.Host
-    
-    // Get path
-    path := u.Path
-    if path == "" || path == "/" {
-        path = "/index.html"
-    }
-    
-    // Combine
-    fullPath := filepath.Join(baseDir, domain, path)
-    
-    // Create directories
-    dir := filepath.Dir(fullPath)
-    os.MkdirAll(dir, 0755)
-    
-    return fullPath
-}
-```
-
-**Example**:
-```
-URL: https://www.example.com/css/style.css
-Result: ./www.example.com/css/style.css
-
-URL: https://www.example.com/
-Result: ./www.example.com/index.html
-```
-
----
-
-#### Step 19: Convert Links for Offline Viewing
-```go
-func ConvertLinks(htmlContent, baseURL string) (string, error) {
-    // Parse HTML
-    // Find all links (href, src)
-    // Convert absolute URLs to relative paths
-    // Save modified HTML
-}
-```
-
-**Algorithm**:
-```
-1. Parse HTML document
-2. For each link found:
-   a. If external, keep as-is
-   b. If internal, convert to relative path
-   c. Example: https://example.com/css/style.css → ../css/style.css
-3. Reconstruct HTML with modified links
-```
-
-**Implementation Hint**:
-```go
-func ConvertToRelativePath(from, to string) string {
-    // Calculate relative path from 'from' file to 'to' file
-    // Use filepath.Rel() or custom logic
-}
-```
-
----
-
-### **Phase 9: Testing & Edge Cases** 🧪
-
-#### Step 20: Handle Edge Cases
-
-**Network Errors**:
-```go
-func DownloadWithRetry(url string, maxRetries int) error {
-    for i := 0; i < maxRetries; i++ {
-        err := Download(url)
-        if err == nil {
-            return nil
-        }
-        
-        // Wait before retry
-        time.Sleep(time.Second * time.Duration(i+1))
-    }
-    return fmt.Errorf("failed after %d retries", maxRetries)
-}
-```
-
-**Large Files**:
-```go
-// Use buffered reading/writing
-// Don't load entire file into memory
-buf := make([]byte, 32*1024) // 32KB buffer
-io.CopyBuffer(dst, src, buf)
-```
-
-**Circular Links** (for mirroring):
-```go
-// Keep track of visited URLs
-visited := make(map[string]bool)
-
-if visited[url] {
-    return // Already processed
-}
-visited[url] = true
-```
-
-**File Name Conflicts**:
-```go
-func GetUniqueFilename(path string) string {
-    if _, err := os.Stat(path); os.IsNotExist(err) {
-        return path
-    }
-    
-    // Add number suffix: file.txt → file(1).txt
-    ext := filepath.Ext(path)
-    base := strings.TrimSuffix(path, ext)
-    
-    for i := 1; ; i++ {
-        newPath := fmt.Sprintf("%s(%d)%s", base, i, ext)
-        if _, err := os.Stat(newPath); os.IsNotExist(err) {
-            return newPath
-        }
-    }
-}
-```
-
----
-
-## 🐛 Common Issues and Solutions
-
-### Issue 1: Progress Bar Flickering
-**Problem**: Progress bar updates too frequently
-**Solution**: Throttle updates to every 100ms
-```go
-if time.Since(lastUpdate) < 100*time.Millisecond {
-    return
-}
-```
-
-### Issue 2: Deadlock in Concurrent Downloads
-**Problem**: WaitGroup never completes
-**Solution**: Always call `wg.Done()` using defer
-```go
-go func() {
+func (c *Crawler) crawl(rawURL string, wg *sync.WaitGroup) {
     defer wg.Done()
-    // download code
-}()
+
+    // 1. Lock the mutex, check if URL was already visited
+    //    If yes: unlock and return
+    //    If no: mark as visited, unlock
+
+    // 2. Parse the URL — if it is not on the same domain, return
+
+    // 3. Check -X: if the path starts with an excluded directory, return
+
+    // 4. Check -R: if the path ends with a rejected extension, return
+
+    // 5. Make the HTTP GET request
+
+    // 6. Build the local save path and create necessary directories
+
+    // 7. If the response is HTML:
+    //    - Read the full body
+    //    - Save it to disk
+    //    - Extract all links
+    //    - For each link: wg.Add(1) and go c.crawl(link, wg)
+    //    If not HTML:
+    //    - Stream directly to disk
+
+}
 ```
 
-### Issue 3: Rate Limit Not Working
-**Problem**: Download faster than limit
-**Solution**: Calculate sleep time correctly based on bytes read
-
-### Issue 4: Mirror Downloading Forever
-**Problem**: Circular links or external links
-**Solution**: Track visited URLs and check domain
-
-### Issue 5: Wrong File Paths
-**Problem**: Files saved in wrong directories
-**Solution**: Use `filepath.Join()` and create directories with `os.MkdirAll()`
+**Verify:** Run `go run -race . --mirror https://example.com` — fix any races before continuing.
 
 ---
 
-## 📋 Testing Checklist
+### Step 9.4 — Flag `-R` (Reject Extensions)
 
-**Basic Download**:
-- [ ] Downloads file from URL
-- [ ] Saves with correct filename
-- [ ] Displays start/end time
-- [ ] Shows status code
-- [ ] Shows content size
-- [ ] Shows progress bar
+The check belongs inside `crawl`. See Step 9.3 placeholder comment.
 
-**Flags**:
-- [ ] `-O` saves with custom name
-- [ ] `-P` saves to custom directory
-- [ ] `-B` runs in background, outputs to log
-- [ ] `--rate-limit` limits download speed
-- [ ] `-i` downloads multiple files
-
-**Mirroring**:
-- [ ] `--mirror` downloads website
-- [ ] Creates proper directory structure
-- [ ] `-R` rejects specified file types
-- [ ] `-X` excludes specified paths
-- [ ] `--convert-links` converts for offline viewing
-- [ ] Handles relative URLs
-- [ ] Avoids circular links
-
-**Edge Cases**:
-- [ ] Handles 404 errors gracefully
-- [ ] Works with redirects
-- [ ] Handles large files (>100MB)
-- [ ] Handles network interruptions
-- [ ] Prevents filename conflicts
+**Verify:**
+```bash
+go run . --mirror -R=jpg,png https://example.com
+# No .jpg or .png files should appear in the output folder
+```
 
 ---
 
-## ✅ Submission Checklist
+### Step 9.5 — Flag `-X` (Exclude Paths)
 
-**Code Quality**:
-- [ ] Well-organized package structure
-- [ ] Clear function names
-- [ ] Comments explain complex logic
-- [ ] No hardcoded values
-- [ ] Proper error handling
-- [ ] Concurrent code is safe (no race conditions)
+The check belongs inside `crawl`. See Step 9.3 placeholder comment.
 
-**Functionality**:
-- [ ] All basic features work
-- [ ] All flags implemented
-- [ ] Progress bar accurate
-- [ ] Mirroring works correctly
-- [ ] Handles errors gracefully
-
-**Testing**:
-- [ ] Tested with small files
-- [ ] Tested with large files
-- [ ] Tested with slow connections
-- [ ] Tested mirroring on real websites
-- [ ] Tested all flag combinations
+**Verify:**
+```bash
+go run . --mirror -X=/js https://example.com
+# Nothing from /js should appear in the output folder
+```
 
 ---
 
-## 📖 Key Concepts Reference
+### Step 9.6 — Flag `--convert-links`
 
-### **HTTP Status Codes**
-- 200: OK (success)
-- 301/302: Redirect
-- 404: Not Found
-- 500: Server Error
+**Goal:** After mirroring, rewrite all absolute URLs in downloaded HTML files to point to local files instead.
 
-### **Content-Length Header**
-- Tells you file size
-- Used for progress calculation
-- May be missing (chunked transfer)
+**Questions to answer:**
+- How do you walk all files in a directory tree in Go?
+- How do you calculate a relative path from one local HTML file to another?
 
-### **Goroutines vs Threads**
-- Goroutines are lightweight
-- Managed by Go runtime
-- Thousands can run concurrently
-
-### **Channels**
-- Communication between goroutines
-- Buffered vs unbuffered
-- Close to signal completion
-
-### **Mutexes**
-- Protect shared data
-- Use when multiple goroutines access same variable
-- Lock/Unlock pattern
-
----
-
-## 🚀 Pro Tips
-
-1. **Start Simple**: Get basic download working first
-2. **Test Early**: Test each feature before moving on
-3. **Use Buffers**: Don't load entire files in memory
-4. **Handle Errors**: Network can fail at any time
-5. **Log Everything**: Especially for background downloads
-6. **Rate Limiting**: Use time-based throttling
-7. **Progress Updates**: Throttle to avoid performance issues
-8. **URL Parsing**: Always validate and sanitize URLs
-9. **Concurrent Safety**: Use mutexes for shared state
-10. **Recursion Limits**: Set max depth for mirroring
-
----
-
-## 💡 Extension Ideas
-
-After completing basic requirements:
-
-1. **Resume Downloads**: Support partial downloads
-2. **Parallel Chunks**: Download file in multiple parts
-3. **Better UI**: Use terminal UI library for better display
-4. **Config File**: Read settings from file
-5. **Compression**: Support gzip, deflate
-6. **Authentication**: Handle HTTP basic auth
-7. **Cookies**: Maintain session cookies
-8. **Robots.txt**: Respect website crawling rules
-9. **Sitemap**: Use sitemap.xml for mirroring
-10. **Database**: Store download history in SQLite
-
----
-
-## 📚 Learning Resources
-
-**HTTP & Networking**:
-- [MDN HTTP Guide](https://developer.mozilla.org/en-US/docs/Web/HTTP)
-- [HTTP Status Codes](https://httpstatuses.com/)
-- [Go net/http Package](https://pkg.go.dev/net/http)
-
-**Concurrency**:
-- [Go by Example - Goroutines](https://gobyexample.com/goroutines)
-- [Go by Example - Channels](https://gobyexample.com/channels)
-- [Effective Go - Concurrency](https://go.dev/doc/effective_go#concurrency)
-
-**HTML Parsing**:
-- [golang.org/x/net/html](https://pkg.go.dev/golang.org/x/net/html)
-- [HTML Parsing Tutorial](https://www.alexedwards.net/blog/parsing-html-with-go)
-
-**File System**:
-- [Go os Package](https://pkg.go.dev/os)
-- [filepath Package](https://pkg.go.dev/path/filepath)
-
----
-
-## 🎓 Implementation Phases Summary
-
-**Week 1**: Basic download + progress bar + flags (-O, -P)
-**Week 2**: Background download (-B) + rate limiting + multiple files (-i)
-**Week 3**: HTML parsing + basic mirroring
-**Week 4**: Advanced mirroring (reject, exclude, convert-links) + testing
-
----
-
-## 🔍 Debugging Strategies
-
-**Network Issues**:
+**Code Placeholder:**
 ```go
-// Enable verbose HTTP logging
-http.DefaultTransport.(*http.Transport).DisableKeepAlives = false
-// Check raw HTTP traffic
+func convertLinks(rootDir string, baseHost string) error {
+    // Walk every file in rootDir
+    // For each .html file:
+    //   1. Read its content
+    //   2. Find all absolute URLs that belong to baseHost
+    //   3. Calculate the relative local path from this file to the target file
+    //   4. Replace the absolute URL with the relative path
+    //   5. Write the updated content back to disk
+}
 ```
 
-**Progress Bar Problems**:
-```go
-// Log progress calculations
-fmt.Fprintf(os.Stderr, "Debug: current=%d total=%d\n", current, total)
-```
-
-**Concurrent Issues**:
-```go
-// Use -race flag
-go run -race . <args>
-```
-
-**Mirroring Issues**:
-```go
-// Log each URL processed
-fmt.Println("Processing:", url)
-fmt.Println("Links found:", len(links))
-```
+**Resources:**
+- Search: **"golang filepath Walk"**
+- Search: **"golang filepath Rel"**
 
 ---
 
-**Remember**: wget is a complex tool built over many years. Your goal is to learn the concepts, not replicate every feature. Focus on understanding HTTP, concurrency, and file operations. Start simple and build up! 🌐💻
+## Debugging Checklist
+
+Go through this before asking for help:
+
+- Have you used the real `wget` to see what the expected behavior is?
+- Are you checking the error return of every function call?
+- If goroutines are involved, have you run `go run -race .` to detect race conditions?
+- If the mirror loops forever, is every access to your visited map inside a mutex lock?
+- If the progress bar creates new lines instead of updating, are you using `\r` and not `\n`?
+- If concurrent downloads produce garbled output, what is protecting your print calls?
+
+---
+
+## Key Packages
+
+| Package | What You Use It For | Docs |
+|---|---|---|
+| `net/http` | Make requests, read response body | https://pkg.go.dev/net/http |
+| `net/url` | Parse and resolve URLs | https://pkg.go.dev/net/url |
+| `os` | Create files, read args, get home dir | https://pkg.go.dev/os |
+| `io` | Stream body to file | https://pkg.go.dev/io |
+| `bufio` | Read input file line by line | https://pkg.go.dev/bufio |
+| `sync` | WaitGroup and Mutex | https://pkg.go.dev/sync |
+| `time` | Timestamps, sleep for rate limit | https://pkg.go.dev/time |
+| `path/filepath` | Build paths, walk directories | https://pkg.go.dev/path/filepath |
+| `strings` | Parse flags, check extensions | https://pkg.go.dev/strings |
+| `os/exec` | Launch background process | https://pkg.go.dev/os/exec |
+| `golang.org/x/net/html` | Parse HTML for mirroring | https://pkg.go.dev/golang.org/x/net/html |
+
+---
+
+## Submission Checklist
+
+- [ ] Output format matches the spec exactly
+- [ ] Non-200 responses print status and exit cleanly
+- [ ] `-O` saves under the given name
+- [ ] `-P` saves to the given directory
+- [ ] `-P` and `-O` combined work correctly
+- [ ] `--rate-limit=400k` and `--rate-limit=2M` both slow the download visibly
+- [ ] `-B` returns the shell immediately, output written to `wget-log`
+- [ ] `-i=file.txt` downloads all URLs concurrently
+- [ ] `--mirror` downloads the site into a domain-named folder
+- [ ] `--mirror -R=jpg,gif` skips rejected extensions
+- [ ] `--mirror -X=/js` skips excluded paths
+- [ ] `--mirror --convert-links` rewrites links for offline viewing
+- [ ] No URL downloaded twice during mirror
+- [ ] Mirror stays on the original domain only
+- [ ] `go run -race .` reports no race conditions
+- [ ] No crashes on bad URLs, missing files, or network errors
