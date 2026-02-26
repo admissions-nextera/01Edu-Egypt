@@ -23,16 +23,6 @@ func main() {
 
 **Question:** What does each line print?
 
-**Answer:**
-- `3`
-- The path to the compiled binary (e.g. `/tmp/go-build.../main` or `main`)
-
-**Explanation:**
-- `os.Args[0]` is always the **program name/path** — not the first user argument
-- `os.Args[1]` = `"input.txt"`, `os.Args[2]` = `"output.txt"`
-- `len(os.Args)` = 3 (program + 2 arguments)
-- Accessing `os.Args[3]` would panic with index out of range!
-
 **Key Concept:** `os.Args[0]` is the binary itself — user args start at index 1!
 
 ---
@@ -60,17 +50,6 @@ func main() {
 
 **Question:** What happens? What's the exit code?
 
-**Answer:**
-- Prints: `Usage: program <input> <output>`
-- Exits with code `1` (non-zero = error)
-- The lines after `os.Exit(1)` are **never reached**
-
-**Explanation:**
-- `os.Exit(1)` terminates immediately — no deferred functions run!
-- Exit code `0` = success, any non-zero = failure
-- Checking `len(os.Args)` before indexing prevents panics
-- This is the standard guard pattern for CLI tools
-
 **Key Concept:** Always validate `len(os.Args)` before indexing — and `os.Exit` skips deferred calls!
 
 ---
@@ -94,17 +73,6 @@ func main() {
 }
 ```
 **Question:** What type is `data`? What does `string(data)` do? What prints when file doesn't exist?
-
-**Answer:**
-- `data` is `[]byte` (a byte slice)
-- `string(data)` converts the byte slice to a UTF-8 string
-- Prints something like: `Error: open nonexistent.txt: no such file or directory`
-
-**Explanation:**
-- `os.ReadFile` returns `([]byte, error)` — the entire file content as bytes
-- Always check `err != nil` before using `data`
-- Converting `[]byte` → `string` is a zero-allocation operation in this context
-- The error message includes the OS-level description
 
 **Key Concept:** `os.ReadFile` returns `[]byte` — always check the error before using the data!
 
@@ -130,17 +98,6 @@ func main() {
 }
 ```
 **Question:** What does `0644` mean? What does `[]byte(content)` do? Does WriteFile append or overwrite?
-
-**Answer:**
-- `0644` is a Unix file permission: owner can read/write (6), group can read (4), others can read (4)
-- `[]byte(content)` converts the string to a byte slice (required by WriteFile)
-- `WriteFile` **overwrites** the entire file — it does NOT append!
-
-**Explanation:**
-- File permissions use octal notation (prefix `0`)
-- `0644` is standard for readable files: `-rw-r--r--`
-- `os.WriteFile` creates the file if it doesn't exist, or **truncates and overwrites** if it does
-- To append, you'd use `os.OpenFile` with `os.O_APPEND` flag
 
 **Key Concept:** `os.WriteFile` always overwrites — use `os.OpenFile` with `O_APPEND` to append!
 
@@ -168,14 +125,6 @@ func main() {
 }
 ```
 **Question:** What gets printed?
-
-**Answer:** `HELLO WORLD`
-
-**Explanation:**
-- Write `"hello world\n"` → read it back → uppercase → write again → read and print
-- `strings.ToUpper` uppercases the entire string including the `\n` (whitespace is unaffected)
-- `fmt.Print` (not `Println`) — the `\n` in the content handles the newline
-- `_` discards the error — fine for examples, bad in production!
 
 **Key Concept:** Ignoring errors with `_` is a code smell — always handle them in real programs!
 
@@ -206,18 +155,6 @@ func main() {
 ```
 **Question:** What does each line print?
 
-**Answer:**
-- `3` — Fields splits on ANY whitespace and ignores leading/trailing/multiple spaces
-- `23` — Split splits on every single `" "` character, including the empty strings between spaces
-- `["hello" "world" "go"]`
-- `""` — first element is the empty string before the leading space
-
-**Explanation:**
-- `strings.Fields` is smart: trims whitespace, splits on any whitespace run
-- `strings.Split(s, " ")` is literal: splits at every single space character
-- `"  hello"` split by `" "` gives `["", "", "hello", ...]`
-- For tokenizing user input or files, **always prefer `strings.Fields`**
-
 **Key Concept:** `Fields` ignores extra whitespace — `Split` is literal and creates empty strings!
 
 ---
@@ -241,18 +178,6 @@ func main() {
 }
 ```
 **Question:** What does each line print?
-
-**Answer:**
-- `"hello   world"` — trims leading AND trailing whitespace (tabs, newlines too)
-- `"hello   world"` — same result here (trims spaces from both ends)
-- `"hello   world  "` — trims leading only
-- `"  hello   world"` — trims trailing only
-
-**Explanation:**
-- `TrimSpace` handles all Unicode whitespace: spaces, tabs `\t`, newlines `\n`, etc.
-- `Trim(s, cutset)` trims any characters in the cutset from both ends
-- `TrimLeft` / `TrimRight` trim from one side only
-- The internal spaces `"   "` between words are NOT touched by any of these
 
 **Key Concept:** `TrimSpace` trims all whitespace — internal spaces are never touched!
 
@@ -283,20 +208,6 @@ func main() {
 ```
 **Question:** What gets printed?
 
-**Answer:**
-```
-HELLO
-world
-GO
-lang
-```
-
-**Explanation:**
-- For words starting with `(`: strip the `(` prefix, strip the `)` suffix, uppercase
-- `TrimPrefix` only removes the prefix if it exists — safe to call even if absent
-- `TrimSuffix` works the same way for the end
-- For words without `(`: print as-is
-
 **Key Concept:** `TrimPrefix`/`TrimSuffix` are safe — they do nothing if the fix isn't present!
 
 ---
@@ -321,19 +232,6 @@ func main() {
 }
 ```
 **Question:** What does each line print?
-
-**Answer:**
-- `the quick brown fox`
-- `the, quick, brown, fox`
-- `thequickbrownfox`
-- `` (empty string)
-- `solo`
-
-**Explanation:**
-- `Join` places the separator **between** elements — not before the first or after the last
-- Empty slice → empty string (no panic)
-- Single element → just the element, separator never used
-- This is the inverse of `strings.Fields`/`strings.Split`
 
 **Key Concept:** `Join` places separator BETWEEN elements — empty/single slices are handled safely!
 
@@ -367,22 +265,6 @@ func main() {
 ```
 **Question:** What does each line print?
 
-**Answer:**
-- `"hello world go"`
-- `"hello world go"`
-- `false` — result1 has a trailing space before TrimSpace, but after trim they match... wait!
-
-**Corrected Answer:**
-- `"hello world go"` — trimmed
-- `"hello world go"` — no trailing space
-- `false` — because result1 (before trim) has a trailing space, they are different strings in memory, BUT after `TrimSpace` the printed values look the same. The `==` comparison compares `result1` (with trailing space) to `result2` (without) → `false`
-
-**Explanation:**
-- `result1` = `"hello world go "` (trailing space)
-- `result2` = `"hello world go"` (no trailing space)
-- The `Printf` trims result1 for display but the `==` compares the original
-- Method A with `+=` creates a new string each iteration (O(n²)) — `strings.Join` is more efficient
-
 **Key Concept:** `+=` in a loop is inefficient — prefer `strings.Join` or `strings.Builder`!
 
 ---
@@ -411,18 +293,6 @@ func main() {
 }
 ```
 **Question:** What does each line print?
-
-**Answer:**
-- `255 <nil>` — `ff` in hex = 255
-- `10 <nil>` — `1010` in binary = 8+2 = 10
-- `42 <nil>`
-- `0 strconv.ParseInt: parsing "xyz": invalid syntax` — x, y, z are not valid hex!
-
-**Explanation:**
-- `ParseInt(s, base, bitSize)` — base is 2/8/10/16, bitSize is 32 or 64
-- Valid hex digits: `0-9`, `a-f`, `A-F` — `x`, `y`, `z` are invalid
-- On error, the returned int is `0` (not garbage)
-- Always check the error before using the result!
 
 **Key Concept:** `ParseInt` returns `0` on error — check `err != nil` before using the value!
 
@@ -458,22 +328,6 @@ func main() {
 ```
 **Question:** What does each iteration print?
 
-**Answer:**
-```
-ff -> 255
-0xFF -> 255
-0XFF -> 255
-FF -> 255
-10 -> 16
-GG -> ERROR
-```
-
-**Explanation:**
-- `strings.ToLower` normalizes `"0XFF"` → `"0xff"`, `"FF"` → `"ff"`
-- `TrimPrefix(s, "0x")` removes the `0x` prefix if present — safe if not present
-- `"10"` in hex = 16 in decimal (not 10!)
-- `"GG"` fails — `G` is not a valid hex digit (only 0-9, a-f)
-
 **Key Concept:** `"10"` in hex = 16 decimal — always know your base when parsing!
 
 ---
@@ -506,22 +360,6 @@ func main() {
 ```
 **Question:** What does each line print?
 
-**Answer:**
-```
-"101" -> 5
-"1111" -> 15
-"10000000" -> 128
-"2" -> ERROR
-"" -> ERROR
-```
-
-**Explanation:**
-- `101` binary = 4+0+1 = 5
-- `1111` binary = 8+4+2+1 = 15
-- `10000000` = 2^7 = 128
-- `"2"` fails — binary only allows `0` and `1`
-- `""` fails — empty string is invalid for ParseInt
-
 **Key Concept:** Binary only uses `0` and `1` — any other digit causes a parse error!
 
 ---
@@ -550,18 +388,6 @@ func main() {
 ```
 **Question:** What does each line print?
 
-**Answer:**
-- `42 <nil>`
-- `0 strconv.Atoi: parsing "3.14": invalid syntax` — Atoi is integers only!
-- `-17 <nil>` — Atoi handles negative numbers
-- `255 3` — "255" is 3 characters long
-
-**Explanation:**
-- `Atoi` = "ASCII to integer" — base 10 only, no floats, no other bases
-- `Atoi` is shorthand for `ParseInt(s, 10, 0)` — it returns `int` (not int64)
-- `Itoa` = "integer to ASCII" — converts int to base-10 string
-- For hex/binary parsing you MUST use `ParseInt` with the correct base
-
 **Key Concept:** `Atoi` is base-10 integers only — for other bases use `ParseInt`!
 
 ---
@@ -588,17 +414,6 @@ func main() {
 ```
 **Question:** What does each line print?
 
-**Answer:**
-- `127 <nil>`
-- `127 strconv.ParseInt: parsing "128": value out of range` — 128 overflows int8, returns max value!
-- `128 <nil>` — int64 can hold 128 fine
-
-**Explanation:**
-- The bitSize (8, 16, 32, 64) limits the range of the parsed value
-- bitSize 8 = range [-128, 127] — 128 overflows
-- On overflow: returns the clamped max value (127) AND an error
-- Always use bitSize 64 unless you have a specific reason for smaller sizes
-
 **Key Concept:** On overflow, `ParseInt` returns the clamped max value AND an error — check both!
 
 ---
@@ -624,21 +439,6 @@ func main() {
 }
 ```
 **Question:** What gets printed?
-
-**Answer:**
-```
-[0] "hello"
-[1] "(hex)ff"
-[2] "world"
-[3] "(bin)1010"
-[4] "end"
-```
-
-**Explanation:**
-- `strings.Fields` splits on whitespace and returns a clean slice
-- Tokens like `(hex)ff` are treated as single words — no space inside them
-- Indexing with `i` gives us position information for look-ahead/look-behind
-- This is the foundation of a simple token parser
 
 **Key Concept:** `strings.Fields` preserves tokens like `(hex)ff` as single units!
 
@@ -682,15 +482,6 @@ func main() {
 ```
 **Question:** What gets printed?
 
-**Answer:** `hello 255 world 10 end`
-
-**Explanation:**
-- `(hex)ff` → strip prefix → parse `"ff"` as hex → 255 → convert to string
-- `(bin)1010` → strip prefix → parse `"1010"` as binary → 10 → convert to string
-- Regular words pass through untouched
-- `strings.Join` reassembles with spaces
-- This is the classic **single-pass token substitution pipeline**
-
 **Key Concept:** Strip prefix → parse → convert back to string — single-pass pipeline pattern!
 
 ---
@@ -728,14 +519,6 @@ func main() {
 ```
 **Question:** What gets printed?
 
-**Answer:** `my name is ALICE and i love golang`
-
-**Explanation:**
-- When `(upper)` is found, it consumes the NEXT word and uppercases it: skip 2 indices
-- When `(lower)` is found, it consumes the NEXT word and lowercases it: skip 2 indices
-- Regular words are added as-is and advance by 1
-- The `i+1 < len(words)` check prevents out-of-bounds panic if `(upper)` is the last word
-
 **Key Concept:** Look-ahead parsing consumes multiple tokens per iteration — use `i += 2` not `range`!
 
 ---
@@ -772,14 +555,6 @@ func main() {
 }
 ```
 **Question:** What gets printed?
-
-**Answer:** `hello WORLD go lang`
-
-**Explanation:**
-- `(upper)` modifies the **previous** word already in result
-- `world` is added, then `(upper)` uppercases `result[len(result)-1]`
-- `go` is added, then `(lower)` lowercases `result[len(result)-1]` — but `go` is already lowercase
-- `LANG` is added as-is since it has no modifier after it
 
 **Key Concept:** Look-behind modifies the LAST element of the result slice — `result[len(result)-1]`!
 
@@ -819,25 +594,6 @@ func main() {
 }
 ```
 **Question:** What gets printed?
-
-**Answer:** `this is A test Of capitalization`
-
-**Explanation:**
-- `(cap)` uppercases the first letter of the previous word
-- `"a"` → `capitalize("a")` = `"A"` (upper first char + lower rest = just `"A"`)
-- `"test"` → is added normally, then `(cap)` → `"Test"` ... wait — let's re-read
-
-**Corrected trace:**
-- `this` → result: `["this"]`
-- `is` → result: `["this","is"]`
-- `(cap)` → capitalize `"is"` → `"Is"` → result: `["this","Is"]`
-- `a` → result: `["this","Is","a"]`
-- `test` → result: `["this","Is","a","test"]`
-- `(cap)` → capitalize `"test"` → `"Test"` → result: `["this","Is","a","Test"]`
-- `of` → result: `["this","Is","a","Test","of"]`
-- `capitalization` → result: `["this","Is","a","Test","of","capitalization"]`
-
-**Corrected Answer:** `this Is a Test of capitalization`
 
 **Key Concept:** Trace token parsers step by step — look-behind always targets the LAST added word!
 
@@ -889,17 +645,6 @@ func main() {
 ```
 **Question:** What does each line print?
 
-**Answer:**
-- `"hello world go"`
-- `5 3` — passOne keeps all 5 (trimmed), passTwo removes the 2 empty strings
-
-**Explanation:**
-- Pass 1: trim each word → `["hello", "", "world", "", "go"]`
-- Pass 2: filter empty strings → `["hello", "world", "go"]`
-- Pass 3: join with spaces → `"hello world go"`
-- Each pass has a single responsibility — this is pipeline design
-- `len(step1) = 5` (same count, just trimmed), `len(step2) = 3` (empties removed)
-
 **Key Concept:** Pipeline passes each have ONE job — trim, then filter, then join!
 
 ---
@@ -948,14 +693,6 @@ func main() {
 ```
 **Question:** What gets printed?
 
-**Answer:** `val1 is 26 val2 is 7 invalid is (hex)zz`
-
-**Explanation:**
-- `(hex)1a` → `1a` hex = 16+10 = 26 ✓
-- `(bin)111` → binary = 4+2+1 = 7 ✓
-- `(hex)zz` → `z` is not a valid hex digit → error → keep original `(hex)zz`
-- On parse error: preserve the original token (don't silently drop it)
-
 **Key Concept:** On conversion failure, preserve the original token — don't silently discard data!
 
 ---
@@ -1000,19 +737,6 @@ func main() {
 ```
 **Question:** What gets printed? This is a TRICKY edge case!
 
-**Answer:** `(lower) hello` — wait, let's trace:
-- `i=0`: `w = "(upper)"`, `words[1] = "(lower)"` → uppercase `"(lower)"` → `"(LOWER)"`, `i=2`
-- `i=2`: `w = "hello"` → append `"hello"`
-- Result: `["(LOWER)", "hello"]`
-
-**Corrected Answer:** `(LOWER) hello`
-
-**Explanation:**
-- `(upper)` doesn't know the next token is another modifier — it blindly uppercases it
-- `(LOWER)` is not recognized as a modifier token anymore (case-sensitive match!)
-- This is the edge case of **stacked/chained modifiers** — real parsers need to handle this
-- Solution: check if the next word is also a modifier before applying
-
 **Key Concept:** Modifier tokens applied to other modifier tokens create unexpected results — guard against this!
 
 ---
@@ -1043,17 +767,6 @@ func main() {
 }
 ```
 **Question:** What does each line print?
-
-**Answer:**
-- `[HELLO WORLD]` — original is MODIFIED!
-- `[HELLO WORLD]`
-- `true` — same underlying array!
-
-**Explanation:**
-- Slices are reference types — `process` modifies the ORIGINAL slice in-place
-- `processed` and `original` point to the same underlying array
-- This violates pipeline immutability — each pass should create a new slice
-- Fix: `result := make([]string, len(words))` and write to `result[i]`
 
 **Key Concept:** Modifying a slice parameter mutates the caller's data — always create new slices in pipelines!
 
@@ -1094,19 +807,6 @@ func main() {
 ```
 **Question:** What prints and what panics?
 
-**Answer:**
-- `hello`
-- `` (empty string)
-- `` (empty string) — `Fields` of whitespace-only string is `[]`
-- `world`
-- ❌ **PANIC** — `lastWord("")` → `Fields("")` = `[]` → `[][−1]` → index out of range!
-
-**Explanation:**
-- `strings.Fields("")` and `strings.Fields("   ")` both return an empty slice `[]`
-- `firstWord` correctly guards with `len(words) == 0`
-- `lastWord` has no guard — accessing `words[len(words)-1]` when len is 0 means `words[-1]` → panic
-- Always guard before indexing slices!
-
 **Key Concept:** `strings.Fields` on empty/whitespace input returns an empty slice — always guard!
 
 ---
@@ -1136,14 +836,6 @@ func main() {
 **Run as:** `go run main.go myfile.txt`
 
 **Question:** What gets printed?
-
-**Answer:** `myfile.txt output.txt`
-
-**Explanation:**
-- `os.Args = ["main", "myfile.txt"]` — only 2 elements
-- `getArg(1, "input.txt")` → index 1 exists → returns `"myfile.txt"`
-- `getArg(2, "output.txt")` → index 2 does NOT exist → returns fallback `"output.txt"`
-- This is a clean way to provide default values for optional CLI arguments
 
 **Key Concept:** Bounds-check before accessing `os.Args` — provide sensible defaults for optional args!
 
@@ -1193,23 +885,6 @@ func main() {
 ```
 **Question:** What does each line print?
 
-**Answer:**
-```
-"(hex)ff" -> "255"
-"(hex)" -> "(hex)"
-"(hex)zz" -> "(hex)zz"
-"(hex)0" -> "0"
-"notahex" -> "notahex"
-```
-
-**Explanation:**
-- `(hex)ff` → valid → converts to 255
-- `(hex)` → empty string after prefix → return original token
-- `(hex)zz` → invalid hex → ParseInt fails → return original token
-- `(hex)0` → valid → 0 in hex = 0
-- `"notahex"` → no prefix match → pass through
-- Each guard handles a specific failure mode: no prefix, empty value, invalid chars
-
 **Key Concept:** Layered guards — check prefix, check empty, check parse error — in that order!
 
 ---
@@ -1241,21 +916,6 @@ func main() {
 ```
 **Question:** What does each line print?
 
-**Answer:**
-```
-[b c d e]
-[a b c d]
-[a b d e]  <- wait, but words was modified by earlier calls!
-```
-
-**Corrected trace:** `words` is modified in place by the first `removeIndex` call (append modifies underlying array)!
-
-**Actually:** Each call is on the same `words` slice which shares the same backing array. The first `removeIndex(words, 0)` returns `[b c d e]` but ALSO modifies `words`'s backing array. By the third call `words` may be `[b c d d e]` in the backing array.
-
-**Simplified Answer for discussion:**
-- `removeIndex(words, 5)` → `s[5:]` = `s[6]` on a 5-element slice → **PANIC**: index out of range
-- The recover catches it and prints: `PANIC: runtime error: index out of range [5] with length 5`
-
 **Key Concept:** Removing the last element (`i == len-1`) is valid; removing beyond bounds panics!
 
 ---
@@ -1285,17 +945,6 @@ func main() {
 }
 ```
 **Question:** What does each line print?
-
-**Answer:**
-- `4` — Split creates an EXTRA empty string after the trailing `\n`
-- `6` — Fields splits on all whitespace including `\n`, gives individual words
-- `""` — the trailing empty string after the final `\n`
-
-**Explanation:**
-- `strings.Split("a\nb\n", "\n")` = `["a", "b", ""]` — trailing newline creates trailing empty element
-- This is a very common file-reading bug — always filter empty strings after splitting on `\n`
-- `strings.Fields` treats `\n` as whitespace — good for word-level processing
-- For line-level processing: `Split` then filter, or use `bufio.Scanner`
 
 **Key Concept:** `Split` on `\n` creates a trailing empty string if file ends with newline — always filter it!
 
@@ -1345,25 +994,6 @@ func main() {
 }
 ```
 **Question:** What does each line print?
-
-**Answer:**
-- `hello world` — `(upper)` at start: `len(result) == 0` → skipped entirely
-- `hello WORLD` — wait, trace: `hello` added → `(upper)` → `HELLO` → `(lower)` → `hello` → `world` added
-
-**Corrected trace b:**
-- `"hello"` → result: `["hello"]`
-- `"(upper)"` → uppercase last → `["HELLO"]`
-- `"(lower)"` → lowercase last → `["hello"]`
-- `"world"` → result: `["hello", "world"]`
-
-**Answer b:** `hello world` — the two modifiers cancel each other out!
-
-**Answer c:** `hello WORLD` — `(upper)` at end uppercases `"world"`
-
-**Final Answers:**
-- `hello world` (modifier at start silently skipped)
-- `hello world` (upper then lower cancel out)
-- `hello WORLD` (modifier at end works normally)
 
 **Key Concept:** Two consecutive modifiers cancel out — modifier at start with no previous word is silently skipped!
 
@@ -1456,19 +1086,6 @@ func main() {
 ```
 **Question:** What gets printed? Trace every step.
 
-**Answer:** `There are 255 zombies and 10 HEROES`
-
-**Step-by-step trace:**
-- Step 1 (tokenize): `["There", "are", "(hex)ff", "zombies", "and", "(bin)1010", "(upper)", "heroes"]`
-- Step 2 (convertNumbers):
-  - `(hex)ff` → 255 → `"255"`
-  - `(bin)1010` → 10 → `"10"`
-  - Result: `["There", "are", "255", "zombies", "and", "10", "(upper)", "heroes"]`
-- Step 3 (applyCase):
-  - `(upper)` consumes `heroes` → `"HEROES"`, skip 2
-  - Result: `["There", "are", "255", "zombies", "and", "10", "HEROES"]`
-- Step 4 (assemble): `"There are 255 zombies and 10 HEROES"`
-
 **Key Concept:** Order of pipeline passes MATTERS — convert numbers first, THEN apply case modifiers!
 
 ---
@@ -1513,15 +1130,6 @@ func main() {
 }
 ```
 **Question:** What does Pipeline A print? Why does Pipeline B give a different result?
-
-**Answer:**
-- Pipeline A: `(HEX)FF` — the `(upper)` uppercases the token `(hex)ff` to `(HEX)FF`, but then the conversion step looks for `(HEX)` prefix which doesn't match the conversion logic expecting lowercase `(hex)`
-- Pipeline B: `255` — converting numbers first turns `(hex)ff` → `255`, then there's nothing for `(upper)` to uppercase (it was consumed... or it uppercases `255` → `255`)
-
-**Explanation:**
-- Pass order is critical — uppercasing `(hex)ff` to `(HEX)FF` breaks the hex detection if it's case-sensitive
-- Always run **number conversion passes before case modifier passes**
-- This is why pipeline design requires careful thought about dependencies between passes
 
 **Key Concept:** Passes that transform tokens must run BEFORE passes that read those token formats!
 
