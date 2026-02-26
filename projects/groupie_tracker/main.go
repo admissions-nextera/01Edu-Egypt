@@ -1,25 +1,24 @@
 package main
 
 import (
-	"fmt"
-	"groupie_tracker/handlers"
 	"log"
 	"net/http"
 )
 
+func init() {
+	var err error
+	artists, err = fetchArtists()
+	if err != nil {
+		log.Fatalf("Error fetching artists: %v", err)
+	}
+	relations, err = fetchRelations()
+	if err != nil {
+		log.Fatalf("Error fetching relations: %v", err)
+	}
+}
+
 func main() {
-	// Serve static files (CSS, JS)
-	fs := http.FileServer(http.Dir("./static"))
-	http.Handle("/static/", http.StripPrefix("/static/", fs))
-
-	// Register handlers
-	http.HandleFunc("/", handlers.HomeHandler)
-	http.HandleFunc("/artist", handlers.ArtistHandler)
-
-	// Search/filter feature (client-server interaction requirement)
-	// http.HandleFunc("/search", handlers.SearchHandler)
-
-	// Start server
-	fmt.Println("Server running on http://localhost:8080")
+	http.HandleFunc("/", homeHandler)
+	http.HandleFunc("/artist", artistHandler)
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }

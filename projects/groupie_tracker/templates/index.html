@@ -3,23 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Groupie Tracker - Artists</title>
-    <link rel="stylesheet" href="/static/css/style.css">
+    <title>Groupie-tracker</title>
 </head>
 <body>
-    <h1>Music Artists</h1>
-    
-    <div class="artists-grid">
-        {{range .}}
-        <div class="artist-card">
-            <img src="{{.Image}}" alt="{{.Name}}">
-            <h2>{{.Name}}</h2>
-            <p>Created: {{.CreationDate}}</p>
-            <a href="/artist?id={{.ID}}">View Details</a>
-        </div>
-        {{end}}
-    </div>
-
-    <script src="/static/js/script.js"></script>
+    {{range .}}
+    <a href="/artist?id={{.ID}}"><img src="{{.Image}}" alt="{{.Name}}"></a>
+    <p>{{.Name}}</p>
+    <br>
+    {{end}}
 </body>
 </html>

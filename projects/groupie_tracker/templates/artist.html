@@ -3,48 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{.Artist.Name}} - Details</title>
-    <!-- FIX: Use absolute path /static/ not relative ../static/ -->
-    <link rel="stylesheet" href="/static/css/style.css">
+    <title>ID : {{.Artist.ID}}</title>
 </head>
 <body>
-    <a href="/" class="back-btn">← Back to Artists</a>
-
-    <div class="artist-detail">
-        <div class="artist-info">
-            <img src="{{.Artist.Image}}" alt="{{.Artist.Name}}">
-            <h1>{{.Artist.Name}}</h1>
-
-            <p><strong>Members:</strong></p>
-            <ul>
-                {{range .Artist.Members}}
-                <li>{{.}}</li>
-                {{end}}
-            </ul>
-
-            <p><strong>Creation Date:</strong> {{.Artist.CreationDate}}</p>
-            <p><strong>First Album:</strong> {{.Artist.FirstAlbum}}</p>
-        </div>
-
-        <div class="concerts">
-            <h3>Concert Dates &amp; Locations</h3>
-            {{if .Relations.DatesLocations}}
-                {{range $location, $dates := .Relations.DatesLocations}}
-                <div class="location-block">
-                    <p class="location-name">{{$location}}</p>
-                    <ul class="date-list">
-                        {{range $dates}}
-                        <li>{{.}}</li>
-                        {{end}}
-                    </ul>
-                </div>
-                {{end}}
-            {{else}}
-                <p>No concert data available.</p>
-            {{end}}
-        </div>
-    </div>
-
-    <script src="/static/js/script.js"></script>
+    <h1>{{.Artist.Name}}</h1>
+    <img src="{{.Artist.Image}}" alt="{{.Artist.Name}}">
+    {{range .Artist.Members}}
+    <ul>
+        <li>{{.}}</li>
+    </ul>
+    {{end}}
+    <br>
+    <p>Creation Date:- {{.Artist.CreationDate}}</p>
+    <p>First Album:- {{.Artist.FirstAlbum}}</p>
+    {{range $location, $dates := .Relation}}
+    <p>{{$location}}: {{range $dates}}{{.}}{{end}}</p>
+    {{end}}
 </body>
 </html>

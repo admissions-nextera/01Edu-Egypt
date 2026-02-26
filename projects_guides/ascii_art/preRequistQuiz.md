@@ -1,541 +1,878 @@
 # 🎯 ASCII-Art Prerequisites Quiz
-## File I/O · Runes vs Bytes · strings.Split · ASCII Table · String Building
+## Bytes vs Runes · File I/O · String Building · Error Handling · os.Args
 
 **Time Limit:** 45 minutes  
-**Total Questions:** 25  
-**Passing Score:** 20/25 (80%)
+**Total Questions:** 28  
+**Passing Score:** 22/28 (78%)
 
-> ✅ Pass → You're ready to start ASCII-Art  
-> ❌ Fail → Review flagged topics before starting
+> Questions are tagged: 🟢 Easy · 🟡 Medium · 🔴 Hard  
+> All topics are general — no specific project knowledge required.
 
 ---
 
-## 📋 SECTION 1: RUNES VS BYTES (6 Questions)
+## 📋 SECTION 1: BYTES, RUNES, AND STRINGS (9 Questions)
 
-### Q1: What is the output?
-```go
-s := "Hello"
-fmt.Println(len(s))
-```
+### Q1 🟢 — What is the difference between a `byte` and a `rune` in Go?
 
-**A)** 5  
-**B)** 4  
-**C)** 10  
-**D)** 8  
+**A)** They are identical  
+**B)** `byte` is an alias for `uint8` (one raw byte); `rune` is an alias for `int32` (one Unicode code point, which may span 1–4 bytes in UTF-8)  
+**C)** `byte` holds characters; `rune` holds numbers  
+**D)** `rune` is only used for Russian characters  
 
 <details><summary>💡 Answer</summary>
 
-**A) 5**
+**B) `byte` = `uint8` (one byte); `rune` = `int32` (one Unicode character)**
 
-`len(s)` returns the number of **bytes**, not characters. For pure ASCII strings these are the same. The trap comes with Unicode — `len("é")` is `2` (two bytes) even though it's one character.
+```go
+var b byte = 'A'      // 65 — one byte
+var r rune = 'é'      // 233 — one Unicode code point, but 2 bytes in UTF-8
+
+s := "héllo"
+fmt.Println(len(s))            // 6 — bytes
+fmt.Println(len([]rune(s)))    // 5 — characters
+```
+
+This distinction is critical for text processing. If you treat multi-byte characters as bytes, you'll corrupt them. Always decide: are you working with bytes or characters?
 
 </details>
 
 ---
 
-### Q2: What is the output?
+### Q2 🟢 — What does iterating over a string with `for i, r := range s` give you?
+
+**A)** `i` = character index, `r` = byte value  
+**B)** `i` = byte offset of the rune's start, `r` = the rune (Unicode code point) at that position  
+**C)** `i` = character index, `r` = rune  
+**D)** Same as iterating `[]byte(s)`  
+
+<details><summary>💡 Answer</summary>
+
+**B) `i` = byte offset, `r` = rune value**
+
 ```go
-s := "Hello"
-for i, ch := range s {
-    if i == 1 {
-        fmt.Printf("%T %v\n", ch, ch)
-    }
+s := "héllo"
+for i, r := range s {
+    fmt.Printf("byte offset %d: %c (%d)\n", i, r, r)
+}
+// byte offset 0: h (104)
+// byte offset 1: é (233)   ← é is 2 bytes, so next offset is 3
+// byte offset 3: l (108)
+// byte offset 4: l (108)
+// byte offset 5: o (111)
+
+// To iterate with character index:
+for i, r := range []rune(s) {
+    fmt.Printf("char index %d: %c\n", i, r)
 }
 ```
 
-**A)** `byte 101`  
-**B)** `rune 101`  
-**C)** `int32 101`  
-**D)** Both B and C — rune is an alias for int32  
-
-<details><summary>💡 Answer</summary>
-
-**D) Both B and C — rune is an alias for int32**
-
-`range` over a string yields `(int index, rune value)`. `rune` is defined as `type rune = int32`. `'e'` has ASCII value `101`.
-
-```go
-// These are identical:
-var a rune  = 'e'
-var b int32 = 'e'
-```
+`for range` over a string automatically handles UTF-8 decoding. Use it when you care about characters. Use `for i := 0; i < len(s); i++` when you need raw bytes.
 
 </details>
 
 ---
 
-### Q3: You need to get the ASCII decimal value of the character `'A'`. Which expression gives you `65`?
+### Q3 🟢 — What is the zero value of a `string` in Go? Can you index into it?
 
-**A)** `len('A')`  
-**B)** `int('A')`  
-**C)** `string('A')`  
-**D)** `byte("A")`  
+**A)** `nil` — indexing panics  
+**B)** `""` (empty string) — `len("") == 0`; indexing an empty string panics because there are no bytes  
+**C)** `" "` (a space)  
+**D)** `"\x00"` (null byte)  
 
 <details><summary>💡 Answer</summary>
 
-**B) `int('A')`**
-
-A rune is already an integer — casting it to `int` just makes the type explicit. `'A'` = 65 in ASCII.
+**B) `""` — empty string, length 0**
 
 ```go
-fmt.Println(int('A'))    // 65
-fmt.Println('A' - 32)   // 33 (same math the formula uses)
-```
+var s string          // ""
+fmt.Println(s == "") // true
+fmt.Println(len(s))  // 0
+// s[0]               // panic: index out of range
 
-</details>
-
----
-
-### Q4: What is the output?
-```go
-s := "Go!"
-for _, ch := range s {
-    fmt.Println(ch)
+// Always check before indexing:
+if len(s) > 0 {
+    fmt.Println(s[0])
 }
 ```
 
-**A)** `G o !`  
-**B)** `71 111 33`  
-**C)** `G`, `o`, `!` — each on its own line  
-**D)** `71`, `111`, `33` — each on its own line  
-
-<details><summary>💡 Answer</summary>
-
-**D) `71`, `111`, `33` — each on its own line**
-
-`range` yields runes (integers). `fmt.Println` on an integer prints its decimal value. To print the character itself: `fmt.Println(string(ch))`.
+Unlike C, Go strings are not null-terminated and have no `\x00` zero value. The zero value is a genuinely empty sequence of bytes.
 
 </details>
 
 ---
 
-### Q5: What is the output?
+### Q4 🟡 — What does `s[i]` return for a string `s` — a `byte` or a `rune`?
+
+**A)** A `rune` — Go handles Unicode automatically  
+**B)** A `byte` (`uint8`) — the raw byte at position `i`, regardless of whether it's part of a multi-byte character  
+**C)** A `string` of length 1  
+**D)** Depends on the string's content  
+
+<details><summary>💡 Answer</summary>
+
+**B) A `byte` — the raw byte at that index**
+
 ```go
-ch := 'A'
-fmt.Println(string(ch + 1))
+s := "héllo"
+fmt.Printf("%T %v\n", s[0], s[0])  // uint8 104 (h)
+fmt.Printf("%T %v\n", s[1], s[1])  // uint8 195 (first byte of é in UTF-8)
+// s[1] is NOT 'é' — it's the raw first byte of é's two-byte encoding
+
+// To get the character at position 1 safely:
+r := []rune(s)[1]   // 'é' — correct
 ```
 
-**A)** `B`  
-**B)** `66`  
-**C)** `AB`  
+Indexing a string gives bytes, NOT characters. For multi-byte characters, `s[1]` gives half of `'é'`. This is the #1 source of Unicode bugs in Go string processing.
+
+</details>
+
+---
+
+### Q5 🟡 — What does this print?
+
+```go
+s := "hello"
+fmt.Println(string(s[0]))
+fmt.Println(string([]byte{s[0], s[1]}))
+```
+
+**A)** `h` then `he`  
+**B)** `104` then `[104 101]`  
+**C)** Compile error  
+**D)** `h` then `he` — only works for ASCII  
+
+<details><summary>💡 Answer</summary>
+
+**A) `h` then `he`**
+
+- `s[0]` = `byte(104)` = `'h'`
+- `string(byte(104))` = `"h"` (converts a single byte to its UTF-8 string)
+- `[]byte{s[0], s[1]}` = `[]byte{104, 101}`
+- `string([]byte{104, 101})` = `"he"` (converts a byte slice to string)
+
+Converting a `[]byte` to `string` interprets the bytes as UTF-8. This is the correct way to build strings from individual bytes.
+
+</details>
+
+---
+
+### Q6 🟡 — How do you convert between `string` and `[]byte`?
+
+**A)** You can't — they are incompatible types  
+**B)** `[]byte(s)` converts string to byte slice; `string(b)` converts byte slice to string — both create copies  
+**C)** Use `fmt.Sprintf`  
+**D)** Use `unsafe.Pointer`  
+
+<details><summary>💡 Answer</summary>
+
+**B) Explicit conversions — both create copies**
+
+```go
+s := "hello"
+b := []byte(s)   // copy of the bytes: [104 101 108 108 111]
+b[0] = 'H'       // modifies the copy, NOT s
+s2 := string(b)  // "Hello" — new string from modified bytes
+
+// Round-trip: string → []byte → modify → string
+s3 := string(append([]byte(s), '!'))  // "hello!"
+```
+
+Both conversions copy the data — Go strings are immutable. This is safe but has a cost. For performance-critical code that does many conversions, restructure to work with `[]byte` throughout.
+
+</details>
+
+---
+
+### Q7 🟡 — What does `strings.Split("hello\nworld\n", "\n")` return?
+
+**A)** `["hello", "world"]`  
+**B)** `["hello", "world", ""]` — trailing delimiter creates an empty last element  
+**C)** `["hello\n", "world\n"]`  
+**D)** `["hello", "world", "\n"]`  
+
+<details><summary>💡 Answer</summary>
+
+**B) `["hello", "world", ""]` — trailing newline creates an empty string**
+
+```go
+parts := strings.Split("hello\nworld\n", "\n")
+// ["hello", "world", ""]  ← empty string at end!
+
+// To avoid the empty trailing element:
+parts = strings.Split(strings.TrimRight("hello\nworld\n", "\n"), "\n")
+// ["hello", "world"]
+
+// Or filter:
+lines := strings.Split(content, "\n")
+for _, line := range lines {
+    if line == "" { continue }
+    // process line
+}
+```
+
+Files often end with a newline, producing an empty final element after splitting. Always handle this when processing file content split by lines.
+
+</details>
+
+---
+
+### Q8 🔴 — What is the output?
+
+```go
+s := "hello"
+b := []byte(s)
+b[0] = 'H'
+fmt.Println(s)
+fmt.Println(string(b))
+```
+
+**A)** `Hello` then `Hello`  
+**B)** `hello` then `Hello` — `[]byte(s)` is a copy; `s` is unchanged  
+**C)** `Hello` then `Hello` — `b` references `s`'s memory  
 **D)** Compile error  
 
 <details><summary>💡 Answer</summary>
 
-**A) `B`**
+**B) `hello` then `Hello`**
 
-`'A'` is `65`. `65 + 1 = 66`. `string(66)` converts the code point to the character `'B'`. This is exactly the arithmetic you use to walk through the ASCII table.
-
-</details>
-
----
-
-### Q6: The printable ASCII characters run from code 32 to code 126. How many printable characters are there?
-
-**A)** 94  
-**B)** 95  
-**C)** 96  
-**D)** 126  
-
-<details><summary>💡 Answer</summary>
-
-**B) 95**
-
-`126 - 32 + 1 = 95`. The `+1` is because both ends are **inclusive**. This matters for your bounds checking — any character outside `32–126` is not in the banner file.
+`[]byte(s)` makes a copy of the string's bytes. Modifying `b[0]` changes the copy, not the original string. Go strings are immutable — you can never modify a string in place. To "modify" a string, convert to `[]byte`, change it, then convert back to `string`.
 
 </details>
 
 ---
 
-## 📋 SECTION 2: strings PACKAGE & STRING BUILDING (6 Questions)
+### Q9 🔴 — A file contains ASCII art where each line is exactly 8 characters. How do you safely access the character at column `col` of row `row`?
 
-### Q7: What does `strings.Split("a\nb\nc", "\n")` return?
-
-**A)** `["a", "b", "c"]`  
-**B)** `["a\n", "b\n", "c"]`  
-**C)** `["a", "\n", "b", "\n", "c"]`  
-**D)** `["a b c"]`  
+**A)** `content[row][col]`  
+**B)** Split by `"\n"`, then `lines[row][col]` — gives a `byte`, which is fine for pure ASCII  
+**C)** `[]rune(content)[row*8+col]`  
+**D)** `content[row*8+col]`  
 
 <details><summary>💡 Answer</summary>
 
-**A) `["a", "b", "c"]`**
-
-`strings.Split(s, sep)` removes the separator completely. The result has `len(s) + 1` elements where `len` is the number of separator occurrences. For 2 newlines: 3 parts.
-
-</details>
-
----
-
-### Q8: A file ends with a newline: `"a\nb\n"`. You call `strings.Split(content, "\n")`. How many elements does the result have?
-
-**A)** 2  
-**B)** 3 — the trailing newline creates an empty final element  
-**C)** 1  
-**D)** Depends on the OS  
-
-<details><summary>💡 Answer</summary>
-
-**B) 3 — the trailing newline creates an empty final element**
+**B) Split into lines, then index — gives a `byte`, correct for pure ASCII**
 
 ```go
-parts := strings.Split("a\nb\n", "\n")
-// ["a", "b", ""]  ← empty string at end
-fmt.Println(len(parts)) // 3
+lines := strings.Split(content, "\n")
+if row >= len(lines) || col >= len(lines[row]) {
+    // bounds check
+}
+ch := lines[row][col]   // byte — safe for pure ASCII (0-127)
 ```
 
-This is a critical detail for loading banner files. The trailing empty element must be accounted for or you'll get off-by-one errors in your line indexing.
+For pure ASCII content (values 0–127), one byte = one character, so `lines[row][col]` works correctly. If the content could contain UTF-8 multi-byte characters, you'd need to convert to `[]rune` first. Always bounds-check before indexing.
 
 </details>
 
 ---
 
-### Q9: Which approach builds a long string more efficiently inside a loop?
+## 📋 SECTION 2: FILE READING AND os.Args (7 Questions)
+
+### Q10 🟢 — What is the idiomatic way to read an entire file as a string in Go?
+
+**A)** `os.ReadFile(name)` then `string(data)`  
+**B)** `ioutil.ReadFile(name)` (deprecated since Go 1.16)  
+**C)** Both A and B work; A is the modern approach  
+**D)** `bufio.ReadAll(name)`  
+
+<details><summary>💡 Answer</summary>
+
+**C) `os.ReadFile` is the modern way; `ioutil.ReadFile` is deprecated**
+
+```go
+data, err := os.ReadFile("banner.txt")
+if err != nil {
+    return fmt.Errorf("could not read file: %w", err)
+}
+content := string(data)   // convert to string for text processing
+lines := strings.Split(content, "\n")
+```
+
+`ioutil.ReadFile` still works but is deprecated since Go 1.16. Use `os.ReadFile` in all new code.
+
+</details>
+
+---
+
+### Q11 🟢 — How do you check if a file exists before opening it?
+
+**A)** `os.FileExists("file.txt")`  
+**B)** `os.Exists("file.txt")`  
+**C)** Try to open it and check the error: `_, err := os.Stat("file.txt"); os.IsNotExist(err)`  
+**D)** `file.Exists()`  
+
+<details><summary>💡 Answer</summary>
+
+**C) `os.Stat` + `os.IsNotExist`**
+
+```go
+_, err := os.Stat("banner.txt")
+if os.IsNotExist(err) {
+    fmt.Println("file not found")
+    return
+}
+if err != nil {
+    fmt.Println("other error:", err)
+    return
+}
+// file exists — proceed to open
+```
+
+There's no `os.FileExists` in Go. The idiomatic pattern is to attempt the operation and handle the error, rather than pre-checking. For reads, just `os.ReadFile` and check the error directly — the error will tell you if the file doesn't exist.
+
+</details>
+
+---
+
+### Q12 🟡 — Your program requires exactly one command-line argument. How do you validate this?
 
 **A)**
 ```go
-result := ""
-for _, line := range lines {
-    result += line + "\n"
-}
+if os.Args[0] == "" { ... }
 ```
 **B)**
 ```go
-var sb strings.Builder
-for _, line := range lines {
-    sb.WriteString(line + "\n")
+if len(os.Args) != 2 {
+    fmt.Fprintln(os.Stderr, "Usage: program <argument>")
+    os.Exit(1)
 }
-result := sb.String()
 ```
-**C)** Both are identical in performance  
-**D)** `strings.Join(lines, "\n")`  
-
-<details><summary>💡 Answer</summary>
-
-**B) strings.Builder**
-
-Option A uses `+=` which creates a new string allocation on every iteration — O(n²) total. `strings.Builder` amortizes allocations and is O(n). Option D is also fine but doesn't work when you need to build conditionally across a nested loop (which you do in row-by-row rendering).
-
-</details>
-
----
-
-### Q10: What is the output?
+**C)**
 ```go
-lines := []string{"row1_h", "row1_i"}
-fmt.Println(strings.Join(lines, " "))
+if os.Args == nil { ... }
+```
+**D)**
+```go
+if os.Args[1] == "" { ... }
 ```
 
-**A)** `row1_h\nrow1_i`  
-**B)** `row1_h row1_i`  
-**C)** `["row1_h", "row1_i"]`  
-**D)** `row1_hrow1_i`  
-
 <details><summary>💡 Answer</summary>
 
-**B) `row1_h row1_i`**
+**B) Check `len(os.Args) != 2`**
 
-`strings.Join` places the separator **between** elements, not after the last one. For rendering one row of ASCII art you concatenate character row pieces — `strings.Join(pieces, "")` with an empty separator.
-
-</details>
-
----
-
-### Q11: You're on Windows and a file uses `\r\n` line endings. You split on `"\n"`. What problem occurs?
-
-**A)** No problem — Go handles this automatically  
-**B)** Each line will have a trailing `\r`, which will corrupt your art comparisons  
-**C)** The file won't load  
-**D)** Lines will be doubled  
-
-<details><summary>💡 Answer</summary>
-
-**B) Each line will have a trailing `\r`, which will corrupt your art comparisons**
-
-After splitting on `"\n"`, each line becomes `"content\r"`. When you compare this to expected art lines or use `len()`, the `\r` adds an extra invisible character. Fix with:
 ```go
-line = strings.TrimRight(line, "\r")
+// os.Args[0] = program name (always present)
+// os.Args[1] = first user argument
+// len(os.Args) == 1 means no user arguments
+
+func main() {
+    if len(os.Args) != 2 {
+        fmt.Fprintln(os.Stderr, "Usage: program <text>")
+        os.Exit(1)
+    }
+    input := os.Args[1]
+    // ...
+}
 ```
 
+Always write to `os.Stderr` for error/usage messages, not `os.Stdout`. Exit with code 1 (or non-zero) to signal failure to the shell.
+
 </details>
 
 ---
 
-### Q12: What is the output?
+### Q13 🟡 — What does `os.Exit(1)` do and when should you use it?
+
+**A)** Returns `1` from `main`  
+**B)** Terminates the program immediately with exit code 1, bypassing all deferred functions — use for unrecoverable errors or invalid arguments  
+**C)** Same as `return` in `main`  
+**D)** Sends signal 1 to the process  
+
+<details><summary>💡 Answer</summary>
+
+**B) Terminates immediately — deferred functions do NOT run**
+
 ```go
-s := "hello"
-fmt.Println(s[:3])
-fmt.Println(s[3:])
+func main() {
+    defer fmt.Println("this will NOT print")
+    if len(os.Args) != 2 {
+        fmt.Fprintln(os.Stderr, "Usage: program <text>")
+        os.Exit(1)  // terminates immediately
+    }
+}
 ```
 
-**A)** `hel` and `lo`  
-**B)** `hel` and `llo`  
-**C)** `hell` and `lo`  
-**D)** `hel` and `elo`  
-
-<details><summary>💡 Answer</summary>
-
-**A) `hel` and `lo`**
-
-`s[:3]` = indices 0,1,2 → `"hel"`. `s[3:]` = indices 3,4 → `"lo"`. The split point `3` is the first index NOT included in `s[:3]` and the first index included in `s[3:]`.
+Exit code conventions: `0` = success, non-zero = failure. `os.Exit(1)` is for "invalid usage or arguments." `os.Exit(2)` is sometimes used for "can't open file." Programs that exit with 0 on failure make scripting and CI difficult.
 
 </details>
 
 ---
 
-## 📋 SECTION 3: FILE I/O (4 Questions)
+### Q14 🟡 — A file is read into `content`. After `strings.Split(content, "\n")`, the last element is sometimes `""`. How do you handle this robustly?
 
-### Q13: You read a banner file and get `data []byte`. Which line correctly converts it for string processing?
-
-**A)** `text := data.String()`  
-**B)** `text := fmt.Sprintf("%s", data)`  
-**C)** `text := string(data)`  
-**D)** `text := strconv.Itoa(data)`  
+**A)** It never happens  
+**B)** Use `strings.TrimRight(content, "\n")` before splitting, or check `if line == "" { continue }` when processing  
+**C)** Use `strings.SplitAfter` instead  
+**D)** Always remove the first element  
 
 <details><summary>💡 Answer</summary>
 
-**C) `text := string(data)`**
-
-Direct cast from `[]byte` to `string`. Option B works but is unnecessarily verbose. Option A doesn't exist on a slice.
-
-</details>
-
----
-
-### Q14: After calling `os.ReadFile`, when should you check the error?
-
-**A)** Only if you suspect the file might not exist  
-**B)** Always — immediately after the call, before using the data  
-**C)** At the end of the function  
-**D)** Only in production builds  
-
-<details><summary>💡 Answer</summary>
-
-**B) Always — immediately after the call, before using the data**
+**B) Trim trailing newline before splitting, or skip empty lines**
 
 ```go
-data, err := os.ReadFile("standard.txt")
+// Option 1: trim before split (cleanest):
+lines := strings.Split(strings.TrimRight(content, "\n"), "\n")
+
+// Option 2: filter after split:
+allLines := strings.Split(content, "\n")
+var lines []string
+for _, l := range allLines {
+    if l != "" {
+        lines = append(lines, l)
+    }
+}
+
+// Option 3: use strings.Fields for whitespace-separated tokens
+```
+
+Text files almost always end with `\n`. Failing to handle this produces an extra empty string that corrupts array indexing. This is one of the most common bugs in file-reading programs.
+
+</details>
+
+---
+
+### Q15 🔴 — What does this code do, and is it correct?
+
+```go
+data, err := os.ReadFile("banner.txt")
 if err != nil {
-    fmt.Fprintf(os.Stderr, "Error loading banner: %v\n", err)
+    fmt.Println("Error:", err)
+}
+lines := strings.Split(string(data), "\n")
+```
+
+**A)** Correct — reads the file and splits into lines  
+**B)** Bug — if `ReadFile` fails, `data` is `nil` and `string(nil)` panics  
+**C)** Bug — if `ReadFile` fails, `data` is `nil` but `string(nil)` = `""` so `Split` gives `[""]` — the error is printed but execution silently continues with an empty/wrong result  
+**D)** Compile error  
+
+<details><summary>💡 Answer</summary>
+
+**C) Bug — error is printed but execution continues incorrectly**
+
+```go
+// WRONG — continues after error:
+data, err := os.ReadFile("banner.txt")
+if err != nil {
+    fmt.Println("Error:", err)
+    // missing return! falls through with data == nil
+}
+lines := strings.Split(string(data), "\n")  // lines == [""] — wrong
+
+// CORRECT — return on error:
+data, err := os.ReadFile("banner.txt")
+if err != nil {
+    fmt.Fprintf(os.Stderr, "Error reading file: %v\n", err)
+    os.Exit(1)  // or return err if inside a function
+}
+lines := strings.Split(string(data), "\n")
+```
+
+`string(nil)` = `""` in Go, so it doesn't panic — but continuing after an error silently produces wrong results. Always `return` or `os.Exit` after handling an error.
+
+</details>
+
+---
+
+### Q16 🔴 — A banner file stores each character as 8 lines of 8 bytes. How do you extract the 8 lines for character `'A'` given the file has all printable ASCII (32–126)?
+
+**A)**
+```go
+index := 'A'
+lines[index*8 : index*8+8]
+```
+**B)**
+```go
+index := int('A') - 32  // 65-32=33
+charLines := lines[index*8 : index*8+8]
+```
+**C)**
+```go
+index := int('A')
+charLines := lines[index : index+8]
+```
+**D)**
+```go
+charLines := lines['A']
+```
+
+<details><summary>💡 Answer</summary>
+
+**B) Subtract the ASCII offset of the first printable character (space = 32)**
+
+```go
+// Printable ASCII starts at space (32), ends at tilde (126)
+// 'A' = 65, offset = 65 - 32 = 33
+// In an 8-line-per-character file:
+// char 32 (space) → lines 0-7
+// char 33 ('!')   → lines 8-15
+// char 65 ('A')   → lines 33*8 to 33*8+7 = lines 264-271
+
+char := 'A'
+index := int(char) - 32
+startLine := index * 8
+charLines := lines[startLine : startLine+8]
+```
+
+The offset (`- 32`) is the key insight — the file doesn't store characters 0–31 (control characters), so character indexing starts at ASCII 32 (space). Getting this arithmetic wrong is the most common bug in this type of program.
+
+</details>
+
+---
+
+## 📋 SECTION 3: STRING BUILDING AND OUTPUT (7 Questions)
+
+### Q17 🟢 — What is the fastest way to build a result string from many small pieces in a loop?
+
+**A)** `result += piece` on each iteration  
+**B)** `var b strings.Builder; b.WriteString(piece); result := b.String()`  
+**C)** `fmt.Sprintf("%s%s", result, piece)`  
+**D)** `append([]byte(result), piece...)` then convert at the end  
+
+<details><summary>💡 Answer</summary>
+
+**B) `strings.Builder`**
+
+```go
+var b strings.Builder
+for i := 0; i < 1000; i++ {
+    b.WriteString("line ")
+    b.WriteString(strconv.Itoa(i))
+    b.WriteByte('\n')
+}
+result := b.String()
+```
+
+Option A creates a new string on every iteration — O(n²) total allocations. `strings.Builder` uses a growing byte buffer internally — O(n) total. For a few concatenations, `+` is fine. For loops, always use `strings.Builder`.
+
+</details>
+
+---
+
+### Q18 🟢 — How do you write to standard error in Go?
+
+**A)** `fmt.Println("error")` — automatically goes to stderr  
+**B)** `fmt.Fprintln(os.Stderr, "error")`  
+**C)** `os.Stderr.Print("error")`  
+**D)** Both B and C work  
+
+<details><summary>💡 Answer</summary>
+
+**D) Both `fmt.Fprintln(os.Stderr, ...)` and `fmt.Fprintf(os.Stderr, ...)` work**
+
+```go
+// Error/usage messages go to stderr:
+fmt.Fprintln(os.Stderr, "Error: invalid input")
+fmt.Fprintf(os.Stderr, "Usage: %s <text> [font]\n", os.Args[0])
+
+// Normal output goes to stdout:
+fmt.Println("result")
+fmt.Fprintf(os.Stdout, "result: %s\n", output)
+```
+
+Separating stdout and stderr allows users to redirect them independently: `./program 2>errors.txt` captures errors separately, while `./program > output.txt` captures only the result. Programs that mix output and errors into stdout are harder to use in pipelines.
+
+</details>
+
+---
+
+### Q19 🟡 — How does `fmt.Fprintf(w, format, args...)` differ from `fmt.Sprintf(format, args...)`?
+
+**A)** `Fprintf` is faster  
+**B)** `Fprintf` writes to an `io.Writer` (file, `os.Stdout`, `http.ResponseWriter`); `Sprintf` returns the formatted string without writing anywhere  
+**C)** `Sprintf` is deprecated  
+**D)** They produce different output  
+
+<details><summary>💡 Answer</summary>
+
+**B) `Fprintf` writes to a writer; `Sprintf` returns a string**
+
+```go
+// Fprintf — writes directly to a destination:
+fmt.Fprintf(os.Stdout, "Hello, %s!\n", name)  // writes to stdout
+fmt.Fprintf(os.Stderr, "Error: %v\n", err)    // writes to stderr
+fmt.Fprintf(file, "Line: %d\n", n)            // writes to a file
+
+// Sprintf — produces a string you can use later:
+msg := fmt.Sprintf("Hello, %s!", name)
+lines = append(lines, fmt.Sprintf("%d: %s", i, line))
+```
+
+Use `Fprintf` to avoid creating an intermediate string when you're writing directly to a destination. Use `Sprintf` when you need the string value itself.
+
+</details>
+
+---
+
+### Q20 🟡 — What does `fmt.Print` vs `fmt.Println` vs `fmt.Printf` do differently?
+
+**A)** They are identical  
+**B)** `Print` outputs without newline or formatting; `Println` adds a newline and spaces between args; `Printf` uses format verbs (`%s`, `%d`) — no automatic newline  
+**C)** `Print` is for integers; `Println` for strings; `Printf` for floats  
+**D)** `Printf` always adds a newline  
+
+<details><summary>💡 Answer</summary>
+
+**B) No format vs newline vs format verbs**
+
+```go
+fmt.Print("hello", "world")      // helloworld  (no space, no newline)
+fmt.Println("hello", "world")    // hello world\n (space between, newline at end)
+fmt.Printf("%s %s\n", "hello", "world") // hello world\n (format verbs, explicit \n)
+
+// Common verbs:
+// %s — string, %d — integer, %f — float, %v — default format
+// %q — quoted string, %T — type name, %p — pointer address
+```
+
+`Println` adds spaces between arguments automatically and always adds a trailing newline. `Printf` gives you full control but requires explicit `\n`. `Print` is rarely the right choice.
+
+</details>
+
+---
+
+### Q21 🟡 — You want to join all rows of a 2D output (each row stored in a `[]string`) into a final string separated by newlines. What's the idiomatic approach?
+
+**A)** Loop and concatenate with `+`  
+**B)** `strings.Join(rows, "\n")`  
+**C)** `fmt.Sprintf("%v", rows)`  
+**D)** `bytes.Join`  
+
+<details><summary>💡 Answer</summary>
+
+**B) `strings.Join(rows, "\n")`**
+
+```go
+rows := []string{"##   ##", "#####", "##   ##"}
+
+// Idiomatic — one allocation:
+result := strings.Join(rows, "\n")
+fmt.Println(result)
+
+// Equivalent but less efficient:
+var b strings.Builder
+for i, row := range rows {
+    if i > 0 { b.WriteByte('\n') }
+    b.WriteString(row)
+}
+```
+
+`strings.Join` is the cleanest and most efficient way to build a newline-delimited string from a slice. It makes exactly one allocation for the final string.
+
+</details>
+
+---
+
+### Q22 🔴 — What is the output of this code?
+
+```go
+for i := 0; i < 3; i++ {
+    for j := 0; j < 3; j++ {
+        fmt.Print("*")
+    }
+    fmt.Println()
+}
+```
+
+**A)** `*********` on one line  
+**B)** Three lines, each `***`  
+**C)** `* * * * * * * * *` with spaces  
+**D)** Compile error  
+
+<details><summary>💡 Answer</summary>
+
+**B) Three lines of `***`**
+
+```
+***
+***
+***
+```
+
+`fmt.Print("*")` writes `*` without a newline. The inner loop writes three `*` in a row. `fmt.Println()` with no arguments writes just a newline, ending the row. This pattern — inner loop for columns, outer loop for rows — is fundamental to 2D text output.
+
+</details>
+
+---
+
+### Q23 🔴 — How do you correctly align ASCII art characters when building multi-line output?
+
+**A)** Concatenate each character's lines directly: `row += charLines[i]`  
+**B)** Build the output row by row: for each output row, concatenate that row of every character — then join all output rows with `\n`  
+**C)** Print each character completely before the next  
+**D)** Use a 2D array and print column by column  
+
+<details><summary>💡 Answer</summary>
+
+**B) Build row by row — one output row collects that row from each character**
+
+```go
+// Each char has 8 art lines. Output has 8 rows.
+// Row 0 of output = row 0 from 'H' + row 0 from 'i'
+// Row 1 of output = row 1 from 'H' + row 1 from 'i'
+// etc.
+
+var result strings.Builder
+for row := 0; row < 8; row++ {
+    for _, ch := range inputText {
+        index := int(ch) - 32
+        result.WriteString(charLines[index][row])
+    }
+    result.WriteByte('\n')
+}
+```
+
+This is the core algorithm. If you print each character fully before moving to the next, you get characters stacked vertically, not side by side. Building row-by-row is the only way to get horizontal layout.
+
+</details>
+
+---
+
+## 📋 SECTION 4: ERROR HANDLING (5 Questions)
+
+### Q24 🟢 — What is the idiomatic Go pattern for handling an error from a function call?
+
+**A)** `try { } catch { }`  
+**B)** Check `if err != nil` immediately after the call and handle or return  
+**C)** Ignore errors for simplicity  
+**D)** Use `panic` and `recover`  
+
+<details><summary>💡 Answer</summary>
+
+**B) `if err != nil` immediately after each call**
+
+```go
+data, err := os.ReadFile("file.txt")
+if err != nil {
+    return fmt.Errorf("reading file: %w", err)
+}
+
+n, err := strconv.Atoi(os.Args[1])
+if err != nil {
+    fmt.Fprintln(os.Stderr, "argument must be a number")
     os.Exit(1)
 }
 ```
 
-Using `data` when `err != nil` is undefined behavior — `data` may be `nil`, causing a panic downstream.
+Go has no exceptions. Errors are explicit return values. The pattern is repetitive by design — it forces you to handle every error at the point it occurs. Never use `_` to silently discard errors in production code.
 
 </details>
 
 ---
 
-### Q15: `os.Args[0]` contains the program name. Your program is called with `go run . "hello"`. What is `os.Args[1]`?
+### Q25 🟡 — What does `fmt.Errorf("reading %s: %w", filename, err)` do differently from `fmt.Errorf("reading %s: %v", filename, err)`?
 
-**A)** `"go"`  
-**B)** `"run"`  
-**C)** `"hello"`  
-**D)** `"."`  
+**A)** Nothing — `%w` and `%v` are identical  
+**B)** `%w` wraps the error, allowing `errors.Is` and `errors.As` to inspect the original error; `%v` just formats it as a string, losing the original error type  
+**C)** `%w` is for warnings; `%v` is for errors  
+**D)** `%w` includes a stack trace  
 
 <details><summary>💡 Answer</summary>
 
-**C) `"hello"`**
-
-When using `go run .`, the Go toolchain compiles and runs the binary. `os.Args[0]` is the compiled temp binary path. `os.Args[1]` is the first argument you passed — `"hello"`.
-
-</details>
-
----
-
-### Q16: How many arguments does the basic ASCII-Art program expect?
-
-**A)** 0  
-**B)** 1 — exactly the string to render  
-**C)** 2 — input file and output file  
-**D)** Any number  
-
-<details><summary>💡 Answer</summary>
-
-**B) 1 — exactly the string to render**
-
-`len(os.Args)` must equal `2` (program name + 1 argument). If `len(os.Args) != 2`, print usage and return.
-
-</details>
-
----
-
-## 📋 SECTION 4: ASCII TABLE & THE FORMULA (5 Questions)
-
-### Q17: What is the decimal ASCII value of the space character `' '`?
-
-**A)** 0  
-**B)** 32  
-**C)** 48  
-**D)** 64  
-
-<details><summary>💡 Answer</summary>
-
-**B) 32**
-
-The ASCII table starts at 0 (null) and printable characters begin at 32 (space). This is the anchor for the banner file formula — space is the first character and appears at line index 1 in the banner file.
-
-</details>
-
----
-
-### Q18: In the banner file, each character occupies 8 art lines plus 1 blank separator line = 9 lines total. The space character starts at line index 1. At which line index does `'!'` (ASCII 33) start?
-
-**A)** 1  
-**B)** 9  
-**C)** 10  
-**D)** 11  
-
-<details><summary>💡 Answer</summary>
-
-**C) 10**
-
-Formula: `startLine = (ASCII - 32) * 9 + 1`  
-For `'!'` = ASCII 33: `(33 - 32) * 9 + 1 = 1 * 9 + 1 = 10`
-
-</details>
-
----
-
-### Q19: Using the formula `startLine = (ASCII - 32) * 9 + 1`, at which line index does `'A'` (ASCII 65) start?
-
-**A)** 297  
-**B)** 298  
-**C)** 577  
-**D)** 586  
-
-<details><summary>💡 Answer</summary>
-
-**B) 298**
-
-`(65 - 32) * 9 + 1 = 33 * 9 + 1 = 297 + 1 = 298`
-
-</details>
-
----
-
-### Q20: Your `getCharLines` function takes a rune `c` and returns a `[]string` of 8 lines. Which slice expression extracts those 8 lines correctly?
+**B) `%w` wraps for introspection; `%v` just formats as string**
 
 ```go
-startLine := (int(c) - 32) * 9 + 1
+// %w — wraps the error (Go 1.13+):
+err := fmt.Errorf("reading %s: %w", filename, os.ErrNotExist)
+errors.Is(err, os.ErrNotExist)  // true — can inspect the wrapped error
+
+// %v — formats as string:
+err2 := fmt.Errorf("reading %s: %v", filename, os.ErrNotExist)
+errors.Is(err2, os.ErrNotExist) // false — original error info lost
 ```
 
-**A)** `lines[startLine : startLine+9]`  
-**B)** `lines[startLine : startLine+8]`  
-**C)** `lines[startLine-1 : startLine+8]`  
-**D)** `lines[startLine : startLine+7]`  
-
-<details><summary>💡 Answer</summary>
-
-**B) `lines[startLine : startLine+8]`**
-
-You want exactly 8 lines: indices `startLine`, `startLine+1`, ..., `startLine+7`. In Go slice syntax `[low:high]`, `high` is exclusive, so you need `startLine+8`. The 9th line at `startLine+8` is the blank separator — you skip it.
+Use `%w` when callers might need to check the error type with `errors.Is`. Use `%v` when you just want to include the error message in a log and don't need type checking.
 
 </details>
 
 ---
 
-### Q21: Your program receives the input `"Hello~"`. The `~` character is ASCII 126. Is it in the banner file?
+### Q26 🟡 — What is the difference between `log.Fatal` and `fmt.Fprintln(os.Stderr, ...); os.Exit(1)`?
 
-**A)** No — only letters and numbers are in the banner  
-**B)** Yes — all printable ASCII characters 32–126 are in the banner  
-**C)** Maybe — depends on which banner file  
-**D)** No — the banner only goes up to ASCII 122 (`z`)  
+**A)** They are identical  
+**B)** `log.Fatal` prefixes the message with a timestamp and calls `os.Exit(1)`; the manual approach gives you full control over the message format  
+**C)** `log.Fatal` sends an email  
+**D)** `log.Fatal` panics instead of exiting  
 
 <details><summary>💡 Answer</summary>
 
-**B) Yes — all printable ASCII characters 32–126 are in the banner**
-
-All three banner files (standard, shadow, thinkertoy) contain every printable ASCII character from 32 (space) to 126 (`~`). Your program should render any of them without special-casing.
-
-</details>
-
----
-
-## 📋 SECTION 5: RENDERING LOGIC (4 Questions)
-
-### Q22: You want to render `"Hi"` as ASCII art. Why can you NOT loop like this?
+**B) `log.Fatal` adds timestamp + date prefix, then exits**
 
 ```go
-for _, ch := range "Hi" {
-    // print all 8 rows of ch, then move on
+log.Fatal("cannot open file")
+// Output: 2024/01/15 10:23:45 cannot open file
+// Then: os.Exit(1)
+
+// Manual — clean output, no timestamp:
+fmt.Fprintln(os.Stderr, "Error: cannot open file")
+os.Exit(1)
+```
+
+For user-facing CLI tools, the timestamp prefix from `log.Fatal` often looks out of place. Use `fmt.Fprintln(os.Stderr, ...)` for clean user-facing errors. Use `log` for server applications and debugging where timestamps are helpful.
+
+</details>
+
+---
+
+### Q27 🔴 — What is the difference between `panic` and `os.Exit` for handling an unrecoverable error?
+
+**A)** They are equivalent  
+**B)** `panic` unwinds the stack and runs all `defer` functions before terminating; `os.Exit` terminates immediately without running defers. `panic` also prints a stack trace; `os.Exit` does not.  
+**C)** `panic` can be caught with `recover`; `os.Exit` can't — both print a stack trace  
+**D)** Use `panic` for runtime errors, `os.Exit` for logic errors  
+
+<details><summary>💡 Answer</summary>
+
+**B) `panic` runs defers + prints stack trace; `os.Exit` terminates immediately**
+
+```go
+// panic — defers run, stack trace printed:
+defer cleanup()
+panic("something impossible happened")
+// cleanup() RUNS, then stack trace, then exit
+
+// os.Exit — immediate, no defers:
+defer cleanup()
+os.Exit(1)
+// cleanup() does NOT run
+```
+
+For programs: use `os.Exit(1)` for expected error conditions (wrong arguments, file not found). Use `panic` for programming errors that should never happen ("this code path should be unreachable"). Never `panic` for user input errors.
+
+</details>
+
+---
+
+### Q28 🔴 — Is this error handling correct?
+
+```go
+result, _ := strconv.Atoi(os.Args[1])
+lines := bannerLines[result*8 : result*8+8]
+```
+
+**A)** Yes — the underscore ignores the unneeded error  
+**B)** No — if `os.Args[1]` is not a valid integer, `result` is `0` and the slice expression silently uses index 0, producing wrong output with no error  
+**C)** Compile error — `_` can't be used here  
+**D)** Yes — `strconv.Atoi` never fails for typical inputs  
+
+<details><summary>💡 Answer</summary>
+
+**B) Bug — silent wrong result when input is invalid**
+
+```go
+// WRONG:
+result, _ := strconv.Atoi(os.Args[1])  // "abc" → result = 0, err ignored
+lines := bannerLines[0:8]              // silently uses first character
+
+// CORRECT:
+result, err := strconv.Atoi(os.Args[1])
+if err != nil {
+    fmt.Fprintf(os.Stderr, "Error: '%s' is not a valid number\n", os.Args[1])
+    os.Exit(1)
 }
 ```
 
-**A)** `range` doesn't work on strings  
-**B)** Because each character is 8 rows tall — printing H fully before i would stack them vertically, not side by side  
-**C)** `range` gives bytes, not runes  
-**D)** You can — this is the correct approach  
-
-<details><summary>💡 Answer</summary>
-
-**B) Because each character is 8 rows tall — printing H fully before i would stack them vertically, not side by side**
-
-ASCII art characters must be rendered **row by row across all characters simultaneously**:
-```
-// Correct:
-for row := 0; row < 8; row++ {
-    for _, ch := range text {
-        // append row `row` of character `ch`
-    }
-    // print the assembled row
-}
-```
-
-</details>
-
----
-
-### Q23: The input is `"Hello\nWorld"` — but this comes from the command line, so what does your program actually receive?
-
-**A)** A string with a real newline character in the middle  
-**B)** The two characters `\` and `n` — a backslash followed by the letter n  
-**C)** Two separate arguments: `"Hello"` and `"World"`  
-**D)** An error, because shells don't pass newlines  
-
-<details><summary>💡 Answer</summary>
-
-**B) The two characters `\` and `n` — a backslash followed by the letter n**
-
-When the user types `go run . "Hello\nWorld"` in the shell, the shell passes the literal characters `\` and `n` inside the string — it does NOT expand them into a real newline. You must split on the **two-character sequence** `"\\n"` in Go:
-
-```go
-parts := strings.Split(input, "\\n")
-```
-
-</details>
-
----
-
-### Q24: For input `"A\n\nB"` split on `"\\n"`, how many parts do you get and what are they?
-
-**A)** 2 parts: `"A"` and `"B"`  
-**B)** 3 parts: `"A"`, `""`, `"B"`  
-**C)** 3 parts: `"A"`, `"\n"`, `"B"`  
-**D)** 4 parts: `"A"`, `""`, `""`, `"B"`  
-
-<details><summary>💡 Answer</summary>
-
-**B) 3 parts: `"A"`, `""`, `"B"`**
-
-Two `\n` sequences produce 3 parts with one empty string in the middle. The empty string means "print a blank line" — your render logic must handle it without crashing (no call to renderLine).
-
-</details>
-
----
-
-### Q25: What should your program output for `go run . ""`?
-
-**A)** A blank line  
-**B)** Nothing — no output at all  
-**C)** An error message  
-**D)** 8 blank lines (one for each row)  
-
-<details><summary>💡 Answer</summary>
-
-**B) Nothing — no output at all**
-
-An empty string has no characters to render and no `\n` sequences to process. The output is empty. This is an edge case you must handle — do not print anything if the input is empty.
+`_` is sometimes appropriate (discarding a known-safe error), but discarding `strconv.Atoi`'s error and using the zero value is always wrong — the zero value `0` is a plausible real input, making the bug hard to detect.
 
 </details>
 
@@ -545,19 +882,18 @@ An empty string has no characters to render and no `\n` sequences to process. Th
 
 | Score | Result |
 |---|---|
-| 23–25 ✅ | **Excellent.** Strong foundation — start immediately. |
-| 20–22 ✅ | **Ready.** Review missed questions, then start. |
-| 15–19 ⚠️ | **Almost.** Study your weak sections carefully before starting. |
-| Below 15 ❌ | **Not ready.** You'll get stuck on the formula and rendering logic. Review runes, ASCII table, and strings. |
+| 26–28 ✅ | **Excellent** — bytes, strings, and file I/O are solid. |
+| 22–25 ✅ | **Ready** — review any sections you missed. |
+| 17–21 ⚠️ | **Study first** — byte vs rune distinction and error handling need more attention. |
+| Below 17 ❌ | **Not ready** — work through the Go Tour strings section and the `os`, `strings`, `strconv` package docs. |
 
 ---
 
 ## 🔍 Review Map
 
-| Questions Missed | Topic to Study |
+| Missed | Topic to Study |
 |---|---|
-| Q1–Q6 | Runes vs bytes, iterating strings, ASCII arithmetic |
-| Q7–Q12 | `strings.Split`, `strings.Builder`, `strings.Join`, `\r` handling |
-| Q13–Q16 | `os.ReadFile`, error handling, `os.Args` |
-| Q17–Q21 | ASCII table, the `(ASCII-32)*9+1` formula, valid character range |
-| Q22–Q25 | Row-by-row rendering, `\n` in command-line input, edge cases |
+| Q1–Q9 | `byte` vs `rune`, `for range` string, `string([]byte)`, `strings.Split` trailing empty, indexing gives bytes |
+| Q10–Q16 | `os.ReadFile`, `os.Stat`, `os.Args` validation, `defer f.Close()`, trailing newline handling |
+| Q17–Q23 | `strings.Builder`, `fmt.Fprintf` vs `Sprintf`, `fmt.Print/Println/Printf`, `strings.Join`, row-by-row output |
+| Q24–Q28 | `if err != nil` pattern, `%w` vs `%v`, `log.Fatal` vs `os.Exit`, `panic` vs `os.Exit`, silent zero-value bug |

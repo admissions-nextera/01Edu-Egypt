@@ -1,586 +1,932 @@
-# 🎯 Groupie Tracker Prerequisites Quiz
-## HTTP Client · JSON Decoding · Struct Tags · Data Relationships · API Consumption
+# 🎯 Prerequisites Quiz
+## Go HTTP Client · JSON · net/http Server · html/template · HTML Basics
 
-**Time Limit:** 50 minutes  
-**Total Questions:** 28  
-**Passing Score:** 22/28 (78%)
+**Time Limit:** 60 minutes  
+**Total Questions:** 35  
+**Passing Score:** 28/35 (80%)
 
-> ✅ Pass → You're ready to start Groupie Tracker  
-> ⚠️ Also Required → ASCII-Art-Web must be complete — you already know `net/http` server and `html/template`
+> Questions are tagged: 🟢 Easy · 🟡 Medium · 🔴 Hard  
+> All topics are general — no specific project knowledge required.
 
 ---
 
-## 📋 SECTION 1: MAKING HTTP REQUESTS AS A CLIENT (6 Questions)
+## 📋 SECTION 1: GO HTTP CLIENT (8 Questions)
 
-### Q1: What is the difference between Go's `net/http` package used as a **server** vs as a **client**?
+### Q1 🟢 — What does `http.Get(url)` return?
 
-**A)** They use completely different packages  
-**B)** As a server you call `http.ListenAndServe` and write `http.ResponseWriter`; as a client you call `http.Get` to fetch data from an external URL  
-**C)** The client mode is slower  
-**D)** Client mode requires a separate import  
+**A)** The response body as a string  
+**B)** A `*http.Response` and an `error`  
+**C)** Just an `error`  
+**D)** A `[]byte` of the body  
 
 <details><summary>💡 Answer</summary>
 
-**B) Server writes responses; client makes requests to external URLs**
+**B) `*http.Response` and an `error`**
 
-```go
-// As a server (you've done this):
-http.HandleFunc("/", handler)
-http.ListenAndServe(":8080", nil)
-
-// As a client (new for this project):
-resp, err := http.Get("https://groupietrackers.herokuapp.com/api/artists")
-```
-
-The same `net/http` package does both. This project adds the client side.
-
-</details>
-
----
-
-### Q2: What is the correct way to make a GET request to an external URL and read the response body?
-
-**A)**
-```go
-body := http.Get("https://api.example.com/data")
-```
-**B)**
 ```go
 resp, err := http.Get("https://api.example.com/data")
-if err != nil { return err }
-defer resp.Body.Close()
-data, err := io.ReadAll(resp.Body)
-```
-**C)**
-```go
-resp := http.Fetch("https://api.example.com/data")
-return resp.JSON()
-```
-**D)**
-```go
-resp, _ := http.Get("https://api.example.com/data")
-return resp.Body
+if err != nil {
+    // network failed — no response
+}
+// resp.StatusCode, resp.Body, resp.Header available here
 ```
 
-<details><summary>💡 Answer</summary>
-
-**B)**
-
-Three critical points:
-1. `http.Get` returns `(*Response, error)` — always check the error
-2. `defer resp.Body.Close()` — always close the body to avoid resource leaks
-3. `io.ReadAll(resp.Body)` — read the body bytes before doing anything with them
-
-Option D ignores the error AND doesn't close the body. Option A won't compile.
+The `error` is non-nil only when the request itself fails (DNS failure, timeout, connection refused). A 404 or 500 response is NOT a Go error — it's a valid response with a bad status code.
 
 </details>
 
 ---
 
-### Q3: You make a request to the API but get HTTP status 500. Your `err` variable is `nil`. What does this mean?
+### Q2 🟢 — Why must you call `resp.Body.Close()` after reading a response?
 
-**A)** The request succeeded  
-**B)** The HTTP transport succeeded (no network error) but the server returned a 500 error — you must check `resp.StatusCode`, not just `err`  
-**C)** Go automatically retries on 500  
-**D)** `err` would never be nil on a 500  
+**A)** To save the response to disk  
+**B)** To release the underlying TCP connection back to the pool — not closing it leaks connections  
+**C)** To decrypt the response  
+**D)** It's optional — the garbage collector handles it  
 
 <details><summary>💡 Answer</summary>
 
-**B) You must check `resp.StatusCode` separately from `err`**
-
-`err != nil` means the network/transport failed (DNS, connection refused, timeout). A 4xx or 5xx response is NOT a Go error — the HTTP transport worked fine. Always check both:
+**B) To release the TCP connection back to the connection pool**
 
 ```go
 resp, err := http.Get(url)
 if err != nil { return err }
+defer resp.Body.Close()  // always — even if you don't read the body
+```
+
+`defer` placed immediately after the error check guarantees `Close()` runs when the function exits, even on early returns or panics. Without it, your program slowly leaks connections until it can no longer make new ones.
+
+</details>
+
+---
+
+### Q3 🟡 — What is the difference between `err != nil` and checking `resp.StatusCode` after `http.Get`?
+
+**A)** They check the same thing  
+**B)** `err != nil` means the network/transport failed; a non-200 `StatusCode` means the server responded but with an error — the transport succeeded  
+**C)** `resp.StatusCode` is always 200 when `err == nil`  
+**D)** `err` contains the status code  
+
+<details><summary>💡 Answer</summary>
+
+**B) They test completely different failure modes**
+
+```go
+resp, err := http.Get(url)
+if err != nil {
+    return err  // network failure — DNS, timeout, refused
+}
 defer resp.Body.Close()
-if resp.StatusCode != 200 {
-    return fmt.Errorf("API returned status %d", resp.StatusCode)
+
+if resp.StatusCode != http.StatusOK {
+    return fmt.Errorf("server returned: %d", resp.StatusCode)
 }
 ```
 
-</details>
-
----
-
-### Q4: Why must you call `resp.Body.Close()` after reading from it?
-
-**A)** To save the data  
-**B)** To release the underlying network connection back to the connection pool — not closing leaks connections and eventually exhausts available connections  
-**C)** To prevent the response from being cached  
-**D)** It's optional — Go GC handles it  
-
-<details><summary>💡 Answer</summary>
-
-**B) To release the network connection back to the pool**
-
-HTTP keep-alive reuses connections. If you don't close the body, the connection is never returned and you'll eventually run out. `defer resp.Body.Close()` placed immediately after checking `err` is the idiomatic pattern — it runs even if subsequent code panics.
+A server returning 404 or 500 gives you `err == nil` (the HTTP conversation succeeded) but `resp.StatusCode != 200`. Always check both.
 
 </details>
 
 ---
 
-### Q5: The API returns a JSON array. You call `http.Get` and get the response. What is the most efficient way to decode the JSON directly from the response without reading all bytes into memory first?
+### Q4 🟡 — What is the most efficient way to decode a JSON response body directly from `resp.Body`?
 
-**A)** `json.Unmarshal(resp.Body, &data)`  
-**B)** `json.NewDecoder(resp.Body).Decode(&data)`  
-**C)** `ioutil.ReadAll(resp.Body)` then `json.Unmarshal`  
-**D)** `resp.Body.JSON(&data)`  
-
-<details><summary>💡 Answer</summary>
-
-**B) `json.NewDecoder(resp.Body).Decode(&data)`**
-
-`json.NewDecoder` reads directly from the `io.Reader` stream without buffering everything in memory first. For large API responses this is more efficient. `json.Unmarshal` requires the full bytes upfront. Both work correctly — `NewDecoder` is the idiomatic choice for HTTP responses.
-
-</details>
-
----
-
-### Q6: Should you fetch the API data on every request to your server, or once at startup?
-
-**A)** Every request — to get fresh data  
-**B)** Once at startup — the artist data is static; re-fetching on every page load is wasteful and slow  
-**C)** Every 5 minutes using a ticker  
-**D)** Never — hardcode the data  
+**A)** `body, _ := io.ReadAll(resp.Body); json.Unmarshal(body, &target)`  
+**B)** `json.NewDecoder(resp.Body).Decode(&target)`  
+**C)** `json.Parse(resp.Body)`  
+**D)** `resp.Body.Decode(&target)`  
 
 <details><summary>💡 Answer</summary>
 
-**B) Once at startup**
-
-The Groupie Tracker API contains static band/artist data that doesn't change. Fetching it once at startup and storing it in memory means: fast page loads (no outbound HTTP per request), no rate-limiting risk, and the server works even if the API is temporarily unreachable after startup.
-
-</details>
-
----
-
-## 📋 SECTION 2: JSON DECODING & STRUCT TAGS (8 Questions)
-
-### Q7: What is a JSON struct tag in Go and why is it needed?
-
-**A)** A comment explaining the field  
-**B)** A backtick annotation that maps a Go struct field name to its JSON key name — needed because Go uses PascalCase but JSON typically uses camelCase or snake_case  
-**C)** A validation rule  
-**D)** A default value  
-
-<details><summary>💡 Answer</summary>
-
-**B) A backtick annotation mapping Go field name to JSON key**
+**B) `json.NewDecoder(resp.Body).Decode(&target)`**
 
 ```go
-type Artist struct {
-    ID           int      `json:"id"`
-    Name         string   `json:"name"`
-    Members      []string `json:"members"`
-    CreationDate int      `json:"creationDate"`
-    FirstAlbum   string   `json:"firstAlbum"`
-    Image        string   `json:"image"`
+var result MyStruct
+if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+    return err
 }
 ```
 
-Without the tag, Go would look for a JSON key `"ID"` (exact match) and silently leave the field as zero value if not found. Tags ensure correct mapping.
+`json.NewDecoder` streams directly from the `io.Reader` without buffering the entire body in memory first. For large responses this is more efficient. Option A works correctly but reads all bytes into memory before decoding.
 
 </details>
 
 ---
 
-### Q8: What is the output?
+### Q5 🟡 — How do you add a custom header (e.g. `User-Agent`) to an HTTP GET request?
+
+**A)** `http.Get(url, "User-Agent: MyApp")`  
+**B)** Use `http.NewRequest` + `req.Header.Set` + `http.DefaultClient.Do(req)`  
+**C)** `http.SetHeader("User-Agent", "MyApp"); http.Get(url)`  
+**D)** Pass a header map as the second argument to `http.Get`  
+
+<details><summary>💡 Answer</summary>
+
+**B) `http.NewRequest` → set headers → `client.Do(req)`**
+
 ```go
-type Artist struct {
-    Name string `json:"name"`
-}
+req, err := http.NewRequest("GET", url, nil)
+if err != nil { return err }
 
-data := []byte(`{"name": "Queen"}`)
-var a Artist
-json.Unmarshal(data, &a)
-fmt.Println(a.Name)
+req.Header.Set("User-Agent", "MyApp/1.0")
+req.Header.Set("Accept", "application/json")
+
+resp, err := http.DefaultClient.Do(req)
 ```
 
-**A)** `"Queen"` (with quotes)  
-**B)** `Queen`  
-**C)** empty string  
-**D)** Error  
-
-<details><summary>💡 Answer</summary>
-
-**B) `Queen`**
-
-`json.Unmarshal` correctly decodes the JSON string `"Queen"` into the Go `string` field `Name`. The quotes are part of JSON syntax — the resulting Go string doesn't have them.
+`http.Get` is a convenience wrapper that creates a request internally. You can't customize headers through it. Build your own request with `http.NewRequest` when you need control.
 
 </details>
 
 ---
 
-### Q9: What happens if you define a struct field but the JSON key doesn't exist in the response?
+### Q6 🟡 — What happens if you call `json.NewDecoder(resp.Body).Decode(&target)` but the server actually returned an error body (e.g. `{"error":"not found"}`)?
 
-**A)** `json.Unmarshal` returns an error  
-**B)** The field gets its zero value — `0` for int, `""` for string, `nil` for slice  
-**C)** The program panics  
-**D)** The entire struct is left empty  
+**A)** The decode succeeds and target gets the error message  
+**B)** Decode succeeds (the JSON is valid), but `target` will have zero values for fields that don't match the error JSON's structure — you should check `StatusCode` BEFORE decoding  
+**C)** Decode returns an error  
+**D)** The program panics  
 
 <details><summary>💡 Answer</summary>
 
-**B) The field gets its zero value — silent, no error**
+**B) Decode succeeds but target will be mostly zero — check status code first**
 
-This is a common debugging trap. If your struct tag doesn't exactly match the JSON key (case-sensitive), the field is silently left at zero. Always print the decoded struct immediately after decoding to verify all fields are populated.
+```go
+if resp.StatusCode != http.StatusOK {
+    // read error body separately before returning
+    var errResp ErrorResponse
+    json.NewDecoder(resp.Body).Decode(&errResp)
+    return fmt.Errorf("API error %d: %s", resp.StatusCode, errResp.Message)
+}
+// safe to decode success response
+json.NewDecoder(resp.Body).Decode(&target)
+```
+
+Always check the status code before deciding which struct to decode into.
 
 </details>
 
 ---
 
-### Q10: The API returns locations as an array of objects, each with an `"index"` field containing a nested array of location strings. What Go struct represents this?
+### Q7 🔴 — What is the default timeout for `http.DefaultClient`? Why is this a problem?
 
+**A)** 30 seconds — long enough for any server  
+**B)** No timeout — `http.DefaultClient` has no timeout by default; a hung server can block your goroutine forever  
+**C)** 10 seconds  
+**D)** 60 seconds  
+
+<details><summary>💡 Answer</summary>
+
+**B) No timeout — this is a serious production concern**
+
+```go
+// http.DefaultClient has Timeout: 0 (no timeout)
+
+// Create a client with a timeout:
+client := &http.Client{
+    Timeout: 10 * time.Second,
+}
+resp, err := client.Get(url)
+```
+
+In production, always use a custom client with a timeout. A server that never responds will hold your goroutine (and its memory) indefinitely if you use `http.DefaultClient`.
+
+</details>
+
+---
+
+### Q8 🔴 — You read `resp.Body` once. Can you read it again?
+
+**A)** Yes — the body resets after reading  
+**B)** No — `resp.Body` is a stream (`io.ReadCloser`); once read, the data is consumed and cannot be read again  
+**C)** Yes — but only if you call `resp.Body.Reset()` first  
+**D)** Yes — use `resp.Body.Seek(0, 0)`  
+
+<details><summary>💡 Answer</summary>
+
+**B) No — streams are one-way; read once**
+
+```go
+// If you need to read the body twice:
+body, err := io.ReadAll(resp.Body)
+resp.Body.Close()
+
+// Now use body ([]byte) as many times as needed:
+json.Unmarshal(body, &result)
+log.Printf("raw body: %s", body)
+```
+
+Read into `[]byte` with `io.ReadAll` if you need multiple reads. This is also useful when debugging — print the raw body before decoding to see exactly what the server sent.
+
+</details>
+
+---
+
+## 📋 SECTION 2: JSON ENCODING & DECODING (9 Questions)
+
+### Q9 🟢 — What does a struct tag like `` `json:"name"` `` do?
+
+**A)** Documents the field for godoc  
+**B)** Maps the Go field name to a specific JSON key during marshal and unmarshal  
+**C)** Makes the field required  
+**D)** Sets a default value  
+
+<details><summary>💡 Answer</summary>
+
+**B) Maps the Go field name to its JSON key**
+
+```go
+type User struct {
+    FirstName string `json:"first_name"` // JSON key: "first_name"
+    Age       int    `json:"age"`
+    Password  string `json:"-"`          // excluded from JSON entirely
+}
+```
+
+Without the tag, `encoding/json` uses the field name exactly (case-sensitive match). The tag controls the JSON key name. `json:"-"` means "never marshal or unmarshal this field."
+
+</details>
+
+---
+
+### Q10 🟢 — What is the zero value for a field that is present in the Go struct but missing from the incoming JSON?
+
+**A)** The decode returns an error  
+**B)** The field silently gets its Go zero value (`0`, `""`, `false`, `nil`)  
+**C)** The field is set to `nil`  
+**D)** The decode panics  
+
+<details><summary>💡 Answer</summary>
+
+**B) The field gets its zero value — no error, silent**
+
+```go
+type Item struct {
+    Name  string `json:"name"`
+    Count int    `json:"count"`
+}
+
+data := []byte(`{"name": "apple"}`)
+var item Item
+json.Unmarshal(data, &item)
+// item.Name == "apple", item.Count == 0 (key missing from JSON)
+```
+
+This is the most common JSON debugging trap. If a field is zero after decoding, the JSON key probably doesn't match the struct tag. Tags are **case-sensitive**.
+
+</details>
+
+---
+
+### Q11 🟢 — What type represents a JSON object with unknown keys in Go?
+
+**A)** `interface{}`  
+**B)** `map[string]interface{}`  
+**C)** `struct{}`  
+**D)** `json.Object`  
+
+<details><summary>💡 Answer</summary>
+
+**B) `map[string]interface{}`**
+
+```go
+var data map[string]interface{}
+json.Unmarshal(body, &data)
+
+name := data["name"].(string)    // type assertion
+count := data["count"].(float64) // JSON numbers decode as float64
+```
+
+When you don't know the JSON structure ahead of time, use `map[string]interface{}`. Note: all JSON numbers become `float64`, not `int`, when decoded into `interface{}`.
+
+</details>
+
+---
+
+### Q12 🟡 — What Go type should you use for this JSON field?
 ```json
-{
-  "index": [
-    {
-      "id": 1,
-      "locations": ["saint_etienne-france", "seattle-usa"]
-    }
-  ]
-}
+{ "tags": ["go", "web", "api"] }
 ```
 
-**A)**
-```go
-type LocationsResponse struct {
-    Index []struct {
-        ID        int      `json:"id"`
-        Locations []string `json:"locations"`
-    } `json:"index"`
-}
-```
-**B)**
-```go
-type LocationsResponse struct {
-    Locations string `json:"locations"`
-}
-```
-**C)**
-```go
-type LocationsResponse struct {
-    Index []string `json:"index"`
-}
-```
-**D)**
-```go
-type LocationsResponse map[string][]string
-```
-
-<details><summary>💡 Answer</summary>
-
-**A)**
-
-Nested JSON objects require nested Go structs (or anonymous structs inline). The outer `"index"` key maps to a slice of objects. Each object has `"id"` (int) and `"locations"` ([]string). The struct tags must match the JSON keys exactly.
-
-</details>
-
----
-
-### Q11: The `relation` API endpoint returns:
-```json
-{
-  "index": [
-    {
-      "id": 1,
-      "datesLocations": {
-        "berlin-germany": ["25-06-2019"],
-        "london-uk": ["01-07-2019", "02-07-2019"]
-      }
-    }
-  ]
-}
-```
-
-What Go type should `DatesLocations` be?
-
-**A)** `[]string`  
+**A)** `string`  
 **B)** `map[string]string`  
+**C)** `[]string`  
+**D)** `[3]string`  
+
+<details><summary>💡 Answer</summary>
+
+**C) `[]string`**
+
+```go
+type Article struct {
+    Tags []string `json:"tags"`
+}
+```
+
+JSON arrays map to Go slices. The size is dynamic so a slice is correct — not an array (which has a fixed, compile-time size). A nil slice field will encode as `null`; use `[]string{}` or the `omitempty` option to avoid this.
+
+</details>
+
+---
+
+### Q13 🟡 — What does the `omitempty` option in a struct tag do?
+
+**A)** Skips the field during decode if it's empty  
+**B)** During marshal (encoding to JSON), omits the field if it has its zero value (`0`, `""`, `false`, `nil`, empty slice/map)  
+**C)** Makes the field optional during unmarshal  
+**D)** Converts empty strings to `null`  
+
+<details><summary>💡 Answer</summary>
+
+**B) Omits the field from the JSON output when it is zero/empty**
+
+```go
+type Response struct {
+    Name  string `json:"name"`
+    Error string `json:"error,omitempty"` // omitted if ""
+    Count int    `json:"count,omitempty"` // omitted if 0
+}
+```
+
+Useful for APIs where you don't want to include `"error": ""` in every successful response. Has no effect on unmarshal — missing keys are still handled the same way.
+
+</details>
+
+---
+
+### Q14 🟡 — What is the correct Go type for this JSON field?
+```json
+{
+  "concerts": {
+    "london-uk": ["2023-07-01", "2023-07-02"],
+    "berlin-de": ["2023-08-15"]
+  }
+}
+```
+
+**A)** `map[string]string`  
+**B)** `[][]string`  
 **C)** `map[string][]string`  
-**D)** `[][]string`  
+**D)** `map[string]interface{}`  
 
 <details><summary>💡 Answer</summary>
 
 **C) `map[string][]string`**
 
-The keys are location strings (e.g. `"berlin-germany"`). Each value is an array of date strings. In Go: `map[string][]string`. The struct tag would be `` `json:"datesLocations"` ``.
-
-This is the critical data structure in the Groupie Tracker project — getting this type right unlocks the entire relation endpoint.
-
-</details>
-
----
-
-### Q12: You decode the artists successfully but `CreationDate` is always `0`. The JSON has `"creationDate": 1970`. What is the most likely cause?
-
-**A)** Integers can't be decoded from JSON  
-**B)** The struct tag is wrong — it might say `json:"creation_date"` or `json:"CreationDate"` instead of `json:"creationDate"`  
-**C)** `int` is the wrong type — use `int64`  
-**D)** JSON decoding is case-insensitive so it always works  
-
-<details><summary>💡 Answer</summary>
-
-**B) The struct tag doesn't exactly match the JSON key**
-
-JSON decoding IS case-insensitive for the default case (no tag), but struct tags are matched exactly. `json:"creation_date"` won't match `"creationDate"`. Print the raw JSON before decoding and compare every key character by character with your struct tags.
-
-</details>
-
----
-
-### Q13: `json.Unmarshal` vs `json.NewDecoder().Decode()` — which requires `[]byte` and which requires an `io.Reader`?
-
-**A)** Both take `[]byte`  
-**B)** `json.Unmarshal` takes `[]byte`; `json.NewDecoder` takes an `io.Reader`  
-**C)** Both take `io.Reader`  
-**D)** `json.Unmarshal` takes `string`  
-
-<details><summary>💡 Answer</summary>
-
-**B) `Unmarshal` = `[]byte`; `NewDecoder` = `io.Reader`**
-
 ```go
-// Unmarshal — needs bytes in memory
-data, _ := io.ReadAll(resp.Body)
-json.Unmarshal(data, &result)
-
-// NewDecoder — streams directly from the body
-json.NewDecoder(resp.Body).Decode(&result)
-```
-
-`resp.Body` is an `io.Reader`, so `NewDecoder` is the direct fit. If you need to inspect the raw bytes (for debugging), read them first with `io.ReadAll`, then decode.
-
-</details>
-
----
-
-### Q14: How do you check if `json.Unmarshal` or `json.NewDecoder().Decode()` failed?
-
-**A)** Check if the struct is empty  
-**B)** Both return an `error` — check `if err != nil`  
-**C)** They never fail  
-**D)** Use `recover()` to catch panics  
-
-<details><summary>💡 Answer</summary>
-
-**B) Both return `error` — check `if err != nil`**
-
-```go
-if err := json.NewDecoder(resp.Body).Decode(&artists); err != nil {
-    return nil, fmt.Errorf("failed to decode artists: %w", err)
+type Event struct {
+    Concerts map[string][]string `json:"concerts"`
 }
 ```
 
-A decode error means: the JSON is malformed, or the target type doesn't match. Always check — silently ignoring decode errors leads to empty structs and mysterious bugs.
+The outer object has string keys (location names), and each value is an array of strings (dates). This maps exactly to `map[string][]string`. Getting this type right is one of the most important JSON skills — always look at the structure carefully before writing the Go type.
 
 </details>
 
 ---
 
-## 📋 SECTION 3: DATA RELATIONSHIPS (5 Questions)
+### Q15 🟡 — How do you marshal a Go struct to a JSON `[]byte`?
 
-### Q15: The API has separate endpoints for artists, locations, dates, and relations. How do they connect to each other?
-
-**A)** Each response contains all the data for that artist  
-**B)** Each artist and relation entry has an `id` field — you match them by comparing `artist.ID` with `relation.ID`  
-**C)** They connect via the order they appear (first artist matches first location)  
-**D)** The artist name is the key  
+**A)** `json.Encode(myStruct)`  
+**B)** `json.Marshal(myStruct)` → returns `([]byte, error)`  
+**C)** `json.Stringify(myStruct)`  
+**D)** `fmt.Sprintf("%j", myStruct)`  
 
 <details><summary>💡 Answer</summary>
 
-**B) Match via `id` field**
+**B) `json.Marshal(myStruct)` returns `([]byte, error)`**
 
 ```go
-// Find the relation for a specific artist:
-for _, rel := range relations {
-    if rel.ID == artist.ID {
-        // this is the matching relation data
+type Point struct {
+    X int `json:"x"`
+    Y int `json:"y"`
+}
+
+p := Point{X: 3, Y: 7}
+data, err := json.Marshal(p)
+if err != nil { return err }
+fmt.Println(string(data))  // {"x":3,"y":7}
+```
+
+`json.MarshalIndent(v, "", "  ")` produces pretty-printed output with 2-space indentation.
+
+</details>
+
+---
+
+### Q16 🔴 — What happens if a JSON struct field is unexported (lowercase)?
+
+**A)** `json.Marshal` panics  
+**B)** The field is silently ignored during both marshal and unmarshal — only exported (uppercase) fields are visible to `encoding/json`  
+**C)** An error is returned  
+**D)** The field is included with its Go name  
+
+<details><summary>💡 Answer</summary>
+
+**B) Silently ignored — unexported fields are invisible to `encoding/json`**
+
+```go
+type User struct {
+    Name     string `json:"name"`   // exported — included in JSON
+    password string                  // unexported — NEVER in JSON
+}
+
+u := User{Name: "Alice", password: "secret"}
+data, _ := json.Marshal(u)
+fmt.Println(string(data)) // {"name":"Alice"} — password excluded
+```
+
+This is a security feature but also a frequent bug: fields that should appear in JSON are accidentally lowercase. Always check capitalization if a field isn't appearing in your JSON output.
+
+</details>
+
+---
+
+### Q17 🔴 — What does `json.Unmarshal` do if the JSON contains a key that doesn't exist in the target struct?
+
+**A)** Returns an error  
+**B)** Panics  
+**C)** Silently ignores the unknown key — only known fields are populated  
+**D)** Stores it in a catch-all field  
+
+<details><summary>💡 Answer</summary>
+
+**C) Unknown keys are silently ignored by default**
+
+```go
+type Minimal struct {
+    Name string `json:"name"`
+}
+
+data := []byte(`{"name":"Alice","age":30,"email":"a@b.com"}`)
+var m Minimal
+json.Unmarshal(data, &m)
+// m.Name == "Alice" — age and email are silently dropped
+```
+
+This is by design — it allows JSON APIs to add new fields without breaking existing Go clients. To detect unknown fields (e.g. for strict parsing), use `json.Decoder` with `DisallowUnknownFields()`.
+
+</details>
+
+---
+
+## 📋 SECTION 3: net/http SERVER (9 Questions)
+
+### Q18 🟢 — What does `http.HandleFunc("/", myHandler)` register?
+
+**A)** A handler for exactly the path `/`  
+**B)** A handler for `/` AND all paths that don't match any other registered handler (catch-all)  
+**C)** A handler only for the root domain  
+**D)** A handler for all paths starting with `/`  
+
+<details><summary>💡 Answer</summary>
+
+**B) A catch-all — matches `/` AND all unregistered paths**
+
+```go
+http.HandleFunc("/", homeHandler)
+// This handles: /, /anything, /foo/bar, /favicon.ico, etc.
+
+// Fix — check the exact path:
+func homeHandler(w http.ResponseWriter, r *http.Request) {
+    if r.URL.Path != "/" {
+        http.NotFound(w, r)
+        return
     }
+    // handle home page
 }
 ```
 
-Always match by ID — never by position. The order of items in different endpoints is not guaranteed to be the same.
+The trailing-slash rule in Go's default mux: a pattern ending in `/` (like `/`) is a subtree — it matches everything under it. A pattern without trailing slash (like `/about`) matches exactly.
 
 </details>
 
 ---
 
-### Q16: For the artist detail page, you need to show concert locations and their dates. Which endpoint provides this combined data?
+### Q19 🟢 — What is the correct HTTP status code for each situation?
 
-**A)** `/api/artists` — it includes all concert data  
-**B)** `/api/locations` and `/api/dates` — you combine them manually  
-**C)** `/api/relation` — it directly links locations to dates for each artist  
-**D)** `/api/artists/1` — detail endpoints include all data  
+| Situation | Code |
+|---|---|
+| Request processed successfully | ? |
+| Client sent an invalid/missing parameter | ? |
+| The requested resource doesn't exist | ? |
+| Server encountered an unexpected error | ? |
 
-<details><summary>💡 Answer</summary>
-
-**C) `/api/relation`**
-
-The `relation` endpoint returns `datesLocations: map[string][]string` — exactly what you need: each location mapped to its list of dates for that artist. This is the most useful endpoint for the detail page.
-
-</details>
-
----
-
-### Q17: You want to display the detail page for artist with ID 5. How do you find the artist in your pre-loaded slice?
-
-**A)** `artists[5]` — index directly  
-**B)** Loop through the slice and compare `artist.ID == 5`  
-**C)** `artists.Find(5)`  
-**D)** The API always returns them sorted so index 4 is always ID 5  
+**A)** 200, 400, 404, 500  
+**B)** 200, 404, 400, 503  
+**C)** 201, 400, 404, 500  
+**D)** 200, 403, 404, 500  
 
 <details><summary>💡 Answer</summary>
 
-**B) Loop and compare `artist.ID == 5`**
+**A) 200, 400, 404, 500**
 
 ```go
-var found *Artist
-for i, a := range artists {
-    if a.ID == id {
-        found = &artists[i]
-        break
+// 200 OK — success
+w.WriteHeader(http.StatusOK)  // or just write a body (200 is default)
+
+// 400 Bad Request — client error (bad input)
+http.Error(w, "invalid id", http.StatusBadRequest)
+
+// 404 Not Found — resource doesn't exist
+http.NotFound(w, r)  // or http.Error(w, "not found", http.StatusNotFound)
+
+// 500 Internal Server Error — server-side failure
+http.Error(w, "internal error", http.StatusInternalServerError)
+```
+
+The distinction between 400 and 404 matters: 400 = "your request is malformed," 404 = "your request is valid but the thing doesn't exist."
+
+</details>
+
+---
+
+### Q20 🟢 — How do you write a response body to a `http.ResponseWriter`?
+
+**A)** `w.Send("hello")`  
+**B)** `w.Write([]byte("hello"))` or `fmt.Fprintf(w, "hello %s", name)`  
+**C)** `w.Body = "hello"`  
+**D)** `http.Write(w, "hello")`  
+
+<details><summary>💡 Answer</summary>
+
+**B) `w.Write([]byte(...))` or `fmt.Fprintf(w, ...)`**
+
+```go
+func handler(w http.ResponseWriter, r *http.Request) {
+    w.Header().Set("Content-Type", "text/plain")
+    fmt.Fprintf(w, "Hello, %s!", r.URL.Query().Get("name"))
+    // or:
+    w.Write([]byte("Hello!"))
+}
+```
+
+`http.ResponseWriter` implements `io.Writer`, so `fmt.Fprintf` works directly. The first call to `Write` sends headers (including a 200 status) if `WriteHeader` hasn't been called yet.
+
+</details>
+
+---
+
+### Q21 🟡 — What is the rule about calling `w.Header().Set()` relative to `w.WriteHeader()` or `w.Write()`?
+
+**A)** Headers can be set at any time — they are sent at the end  
+**B)** Headers MUST be set before `WriteHeader` or `Write` — once the response body starts, headers are already sent and any header changes are silently ignored  
+**C)** Headers must be set after `WriteHeader`  
+**D)** Headers are automatically set — you never need to set them manually  
+
+<details><summary>💡 Answer</summary>
+
+**B) Set headers BEFORE writing the body**
+
+```go
+// CORRECT:
+w.Header().Set("Content-Type", "application/json")
+w.WriteHeader(http.StatusCreated)
+json.NewEncoder(w).Encode(result)
+
+// WRONG — header is ignored, a warning is logged:
+json.NewEncoder(w).Encode(result)     // Write called — headers sent
+w.Header().Set("Content-Type", "application/json")  // too late!
+```
+
+HTTP responses send headers first, then the body. Once the first byte of the body is written, headers are locked. This is one of the most common bugs in Go HTTP handlers.
+
+</details>
+
+---
+
+### Q22 🟡 — How do you read a URL query parameter from `r.URL` for the URL `/search?q=golang&limit=10`?
+
+**A)** `r.Params["q"]`  
+**B)** `r.URL.Query().Get("q")`  
+**C)** `r.QueryParam("q")`  
+**D)** `r.Form["q"]`  
+
+<details><summary>💡 Answer</summary>
+
+**B) `r.URL.Query().Get("q")`**
+
+```go
+func searchHandler(w http.ResponseWriter, r *http.Request) {
+    q := r.URL.Query().Get("q")          // "golang"
+    limit := r.URL.Query().Get("limit")  // "10" (always a string)
+
+    // For multiple values with the same key:
+    tags := r.URL.Query()["tag"]  // []string — if URL had ?tag=a&tag=b
+}
+```
+
+`r.URL.Query()` returns a `url.Values` (which is `map[string][]string`). `.Get()` returns the first value for a key, or `""` if missing.
+
+</details>
+
+---
+
+### Q23 🟡 — How do you read a form field from a POST request with `Content-Type: application/x-www-form-urlencoded`?
+
+**A)** `r.Body.Get("fieldname")`  
+**B)** `r.FormValue("fieldname")`  
+**C)** `r.PostParam("fieldname")`  
+**D)** `r.URL.Query().Get("fieldname")`  
+
+<details><summary>💡 Answer</summary>
+
+**B) `r.FormValue("fieldname")`**
+
+```go
+func submitHandler(w http.ResponseWriter, r *http.Request) {
+    if r.Method != http.MethodPost {
+        http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+        return
     }
-}
-if found == nil {
-    http.NotFound(w, r)
-    return
+    name := r.FormValue("name")  // reads from POST body
+    email := r.FormValue("email")
 }
 ```
 
-Never assume the slice is sorted or that index maps to ID. IDs can have gaps. Always search by value.
+`r.FormValue` parses the request body (for POST) and query string (for GET) and returns the first value for the named key. It calls `r.ParseForm()` internally. `r.URL.Query().Get()` reads ONLY the query string, not the POST body.
 
 </details>
 
 ---
 
-### Q18: A user visits `/artist?id=abc`. How should your handler respond?
+### Q24 🟡 — What is the purpose of `http.ListenAndServe(":8080", nil)`?
 
-**A)** Return 404 — artist not found  
-**B)** Return 400 — `"abc"` is not a valid integer ID  
-**C)** Return 500 — internal error  
-**D)** Return 200 with an empty page  
+**A)** Creates a new HTTP client  
+**B)** Starts a TCP server on port 8080 that routes requests using the default `ServeMux` (the `nil` argument) — this call blocks until the server stops  
+**C)** Listens for one connection then exits  
+**D)** The `nil` means the server doesn't handle any requests  
 
 <details><summary>💡 Answer</summary>
 
-**B) Return 400 — invalid input**
-
-`"abc"` is a client error — they sent a non-integer where an integer is expected. Use `strconv.Atoi` to parse and check:
+**B) Starts the TCP server, blocks, routes via default mux when `nil` is passed**
 
 ```go
-id, err := strconv.Atoi(r.URL.Query().Get("id"))
-if err != nil {
-    http.Error(w, "Invalid artist ID", http.StatusBadRequest)
-    return
+http.HandleFunc("/", homeHandler)
+http.HandleFunc("/api", apiHandler)
+
+// This blocks — run in goroutine if you need to do other things:
+log.Fatal(http.ListenAndServe(":8080", nil))
+```
+
+`nil` means "use `http.DefaultServeMux`" — the same mux that `http.HandleFunc` registers to. Passing a custom `*http.ServeMux` gives you an isolated router.
+
+</details>
+
+---
+
+### Q25 🔴 — What is the risk of writing to `w` after calling `http.Error(w, ..., code)`?
+
+**A)** No risk — you can write additional data  
+**B)** `http.Error` writes the header and body in one call; any subsequent `w.Write` or `w.WriteHeader` is ignored (headers already sent) — always `return` immediately after error responses  
+**C)** The second write overwrites the first  
+**D)** It causes a panic  
+
+<details><summary>💡 Answer</summary>
+
+**B) Headers are already sent — always `return` after `http.Error`**
+
+```go
+// BUG — continues executing after error response:
+func handler(w http.ResponseWriter, r *http.Request) {
+    if id == 0 {
+        http.Error(w, "bad id", http.StatusBadRequest)
+        // NO return — falls through to execute success path!
+    }
+    // ... renders template anyway, but headers are already sent
+}
+
+// CORRECT:
+if id == 0 {
+    http.Error(w, "bad id", http.StatusBadRequest)
+    return  // stop processing
 }
 ```
 
-`400` = bad request from client. `404` = valid ID that doesn't exist. Get the distinction right.
+This is one of the most common bugs in Go HTTP handlers. `http.Error` does not stop function execution.
 
 </details>
 
 ---
 
-### Q19: How do you read a query parameter from the URL `"/artist?id=5"` in Go?
+### Q26 🔴 — What does `http.StripPrefix("/static/", http.FileServer(http.Dir("./static")))` do, and why is `StripPrefix` needed?
 
-**A)** `r.FormValue("id")`  
-**B)** `r.URL.Query().Get("id")`  
-**C)** `r.QueryParams["id"]`  
-**D)** Both A and B work  
-
-<details><summary>💡 Answer</summary>
-
-**D) Both A and B work — but understand the difference**
-
-`r.FormValue("id")` reads from form POST data AND URL query parameters. `r.URL.Query().Get("id")` reads only from the URL query string. For a GET request with query parameters, both return the same thing. `r.URL.Query()` is more explicit and preferred for query-param-only reads.
-
-</details>
-
----
-
-## 📋 SECTION 4: HTTP SERVER & TEMPLATES (5 Questions)
-
-### Q20: Your home handler is registered as `http.HandleFunc("/", homeHandler)`. A user visits `/favicon.ico`. What happens without extra code?
-
-**A)** Returns 404 automatically  
-**B)** `homeHandler` is called — you must explicitly check `r.URL.Path` and return 404 for unknown paths  
-**C)** Go serves it from the current directory automatically  
-**D)** The browser doesn't request `/favicon.ico`  
+**A)** Serves files and strips the directory listing  
+**B)** `FileServer` serves files from `./static`; without `StripPrefix`, a request for `/static/style.css` would look for `./static/static/style.css` (doubled path); `StripPrefix` removes `/static/` before FileServer sees the path  
+**C)** Strips file extensions from URLs  
+**D)** `StripPrefix` is not needed — `FileServer` handles this automatically  
 
 <details><summary>💡 Answer</summary>
 
-**B) `homeHandler` is called — you must check `r.URL.Path`**
-
-The `"/"` pattern in Go's default mux matches ALL unregistered paths. Add this to every handler registered on `"/"`:
+**B) `StripPrefix` removes the URL prefix before passing to FileServer**
 
 ```go
-if r.URL.Path != "/" {
-    http.NotFound(w, r)
-    return
-}
+// Without StripPrefix:
+// GET /static/style.css → FileServer looks for ./static/static/style.css (wrong)
+
+// With StripPrefix:
+// GET /static/style.css → StripPrefix removes "/static/" → FileServer sees "style.css" → serves ./static/style.css (correct)
+
+http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("./static"))))
 ```
 
+This is the canonical pattern for serving static files in Go.
+
 </details>
 
 ---
 
-### Q21: You want to pass both the artists slice AND the selected artist's relation data to a template. How do you do this?
+## 📋 SECTION 4: html/template (9 Questions)
 
-**A)** Call `tmpl.Execute` twice with different data  
-**B)** Define a struct that holds all the data, pass that struct to `Execute`  
-**C)** Use global variables in the template  
-**D)** You can only pass one value to a template  
+### Q27 🟢 — How do you output a variable named `.Name` in a Go HTML template?
+
+**A)** `<%= .Name %>`  
+**B)** `{{ .Name }}`  
+**C)** `{{{ .Name }}}`  
+**D)** `${.Name}`  
 
 <details><summary>💡 Answer</summary>
 
-**B) Define a struct holding all the data, pass the struct**
+**B) `{{ .Name }}`**
 
-```go
-type ArtistPageData struct {
-    Artist   Artist
-    Relation Relation
-    Error    string
-}
+```html
+<!-- Template -->
+<h1>Hello, {{ .Name }}!</h1>
+<p>Age: {{ .Age }}</p>
 
-data := ArtistPageData{Artist: found, Relation: rel}
+<!-- In Go: -->
+data := struct{ Name string; Age int }{"Alice", 30}
 tmpl.Execute(w, data)
 ```
 
-In the template: `{{ .Artist.Name }}`, `{{ .Relation.DatesLocations }}`. This is the standard pattern for any page with multiple data sources.
+The `.` (dot) refers to the data passed to `Execute`. `{{ .Name }}` accesses the `Name` field of that data. HTML template automatically escapes the output to prevent XSS.
 
 </details>
 
 ---
 
-### Q22: In your `index.html` template, how do you iterate over the artists slice?
+### Q28 🟢 — How do you iterate over a slice in a template?
 
-**A)** `{{ for artist in .Artists }}`  
-**B)** `{{ range .Artists }}{{ .Name }}{{ end }}`  
-**C)** `{{ each .Artists as artist }}{{ artist.Name }}{{ end }}`  
-**D)** `{{ loop .Artists }}`  
-
-<details><summary>💡 Answer</summary>
-
-**B) `{{ range .Artists }}{{ .Name }}{{ end }}`**
-
-Inside `{{ range }}`, the `.` changes to refer to the current element. So `.Name` refers to the artist's name. To access the parent data inside range, define a variable: `{{ range $i, $a := .Artists }}{{ $a.Name }}{{ end }}`.
-
-</details>
-
----
-
-### Q23: How do you iterate over a `map[string][]string` (the `datesLocations` data) in a Go template?
-
-**A)** `{{ range .DatesLocations }}{{ . }}{{ end }}`  
-**B)** `{{ range $location, $dates := .DatesLocations }}{{ $location }}: {{ range $dates }}{{ . }}{{ end }}{{ end }}`  
-**C)** `{{ map .DatesLocations }}`  
-**D)** Maps can't be used in templates  
+**A)** `{{ for item in .Items }}`  
+**B)** `{{ range .Items }}{{ . }}{{ end }}`  
+**C)** `{{ each .Items as item }}{{ item }}{{ end }}`  
+**D)** `{{ loop .Items }}`  
 
 <details><summary>💡 Answer</summary>
 
-**B) `{{ range $key, $value := .Map }}`**
+**B) `{{ range .Items }}...{{ end }}`**
 
 ```html
-{{ range $location, $dates := .DatesLocations }}
+<ul>
+{{ range .Items }}
+    <li>{{ .Name }} — {{ .Price }}</li>
+{{ end }}
+</ul>
+
+<!-- With index: -->
+{{ range $i, $item := .Items }}
+    <li>{{ $i }}: {{ $item.Name }}</li>
+{{ end }}
+```
+
+Inside `{{ range }}`, `.` changes to refer to the current element. Use `$i, $item :=` syntax when you need both index and value.
+
+</details>
+
+---
+
+### Q29 🟢 — How do you load and execute a template from a file?
+
+**A)** `template.Open("page.html").Execute(w, data)`  
+**B)** `template.ParseFiles("page.html")` → `tmpl.Execute(w, data)`  
+**C)** `template.Load("page.html", data)`  
+**D)** `html.RenderFile("page.html", w, data)`  
+
+<details><summary>💡 Answer</summary>
+
+**B) `ParseFiles` then `Execute`**
+
+```go
+tmpl, err := template.ParseFiles("templates/page.html")
+if err != nil {
+    http.Error(w, err.Error(), http.StatusInternalServerError)
+    return
+}
+if err := tmpl.Execute(w, data); err != nil {
+    log.Println("template execute error:", err)
+}
+```
+
+`ParseFiles` can accept multiple files: `template.ParseFiles("base.html", "page.html")`. Templates are usually parsed once at startup and cached, not re-parsed on every request.
+
+</details>
+
+---
+
+### Q30 🟡 — What is the `{{ if }}` template action used for?
+
+**A)** Importing other templates  
+**B)** Conditionally rendering a block based on a value's truthiness  
+**C)** Iterating over a collection  
+**D)** Defining a template function  
+
+<details><summary>💡 Answer</summary>
+
+**B) Conditional rendering**
+
+```html
+{{ if .Error }}
+    <div class="error">{{ .Error }}</div>
+{{ else if .Warning }}
+    <div class="warning">{{ .Warning }}</div>
+{{ else }}
+    <div class="success">All good!</div>
+{{ end }}
+
+<!-- Check a boolean field: -->
+{{ if .IsAdmin }}
+    <a href="/admin">Admin Panel</a>
+{{ end }}
+```
+
+In templates, "falsy" values are: `false`, `0`, `nil`, empty string, empty slice/map/channel. Everything else is truthy.
+
+</details>
+
+---
+
+### Q31 🟡 — What is the difference between `{{ .Field }}` and `{{ .Method }}`?
+
+**A)** There is no difference  
+**B)** Both work — `html/template` can access struct fields and call methods that return one or two values (second must be `error`)  
+**C)** Only fields can be accessed in templates  
+**D)** Methods require parentheses: `{{ .Method() }}`  
+
+<details><summary>💡 Answer</summary>
+
+**B) Both fields and methods are accessible — no parentheses needed**
+
+```go
+type User struct {
+    FirstName string
+    LastName  string
+}
+func (u User) FullName() string {
+    return u.FirstName + " " + u.LastName
+}
+```
+
+```html
+{{ .FirstName }}   <!-- field access -->
+{{ .FullName }}    <!-- method call, no parentheses -->
+```
+
+Methods called from templates must return either one value or `(value, error)`. If a method returns an error, the template execution is halted.
+
+</details>
+
+---
+
+### Q32 🟡 — How does `html/template` differ from `text/template`?
+
+**A)** They are identical  
+**B)** `html/template` automatically HTML-escapes all values injected into the template, preventing XSS attacks; `text/template` does no escaping  
+**C)** `html/template` is faster  
+**D)** `text/template` only works with plain text files  
+
+<details><summary>💡 Answer</summary>
+
+**B) `html/template` auto-escapes HTML; `text/template` does not**
+
+```go
+// With html/template:
+data := "<script>alert('xss')</script>"
+// Template: <p>{{ . }}</p>
+// Output: <p>&lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;</p>
+
+// With text/template:
+// Output: <p><script>alert('xss')</script></p>  ← XSS!
+```
+
+Always use `html/template` for web pages. Only use `text/template` for non-HTML output (emails, config files, etc.).
+
+</details>
+
+---
+
+### Q33 🟡 — How do you iterate over a `map[string][]string` in a template?
+
+**A)** `{{ range .Map }}{{ . }}{{ end }}`  
+**B)** `{{ range $key, $values := .Map }}{{ $key }}: {{ range $values }}{{ . }}{{ end }}{{ end }}`  
+**C)** Maps can't be iterated in templates  
+**D)** `{{ for k, v := range .Map }}`  
+
+<details><summary>💡 Answer</summary>
+
+**B) Nested `range` with `$key, $values`**
+
+```html
+{{ range $location, $dates := .Concerts }}
     <h3>{{ $location }}</h3>
     <ul>
         {{ range $dates }}
@@ -590,111 +936,77 @@ Inside `{{ range }}`, the `.` changes to refer to the current element. So `.Name
 {{ end }}
 ```
 
-Go templates support two-variable range for maps: `$key, $value`. The order is not guaranteed — maps in Go templates are iterated in random order.
+Two-variable `range` gives you both key and value. The inner `range $dates` iterates the string slice; `.` inside it refers to each date string. Note: map iteration order is random.
 
 </details>
 
 ---
 
-### Q24: The API is unreachable when your server starts. What should happen?
+### Q34 🔴 — What happens if `tmpl.Execute(w, data)` fails after the response body has already started writing?
 
-**A)** Start the server anyway with empty data  
-**B)** Log the error and exit — the app cannot function without the data  
-**C)** Retry automatically in the background  
-**D)** Return 503 on all requests forever  
+**A)** The partial response is discarded and a 500 is sent  
+**B)** Nothing visible to the client — headers are already sent with 200; the client receives a partial or corrupted page  
+**C)** The template retries  
+**D)** A panic is sent to the client  
 
 <details><summary>💡 Answer</summary>
 
-**B) Log the error and exit**
+**B) The client gets a partial page — you can't send a 500 after starting the body**
 
 ```go
-artists, err := fetchArtists()
-if err != nil {
-    log.Fatalf("Failed to fetch artist data: %v", err)
+// WRONG pattern:
+tmpl.Execute(w, data)   // body starts writing immediately
+// if Execute fails partway through, client gets half a page
+
+// BETTER pattern: render to buffer first
+var buf bytes.Buffer
+if err := tmpl.Execute(&buf, data); err != nil {
+    http.Error(w, "template error", 500)
+    return
 }
+buf.WriteTo(w)  // only write to w if rendering succeeded
 ```
 
-Starting with empty data would serve a broken page to every user. Exiting with a clear error message is better — the operator knows to investigate. `log.Fatalf` logs and calls `os.Exit(1)`.
+For critical pages, render to `bytes.Buffer` first. For simpler cases, log the error and accept that the page may be partially rendered.
 
 </details>
 
 ---
 
-## 📋 SECTION 5: CLIENT-SERVER EVENT (4 Questions)
+### Q35 🔴 — What does `{{ template "header" . }}` do inside a template?
 
-### Q25: The spec requires at least one "client-server event." What does this mean?
-
-**A)** A user can click a button to reload the page  
-**B)** A user action triggers a new request to the server, and the page updates based on the server's response  
-**C)** The server sends push notifications to the client  
-**D)** A form with a submit button  
+**A)** Imports the file named `header`  
+**B)** Calls a named template called `"header"` and passes the current dot value (`.`) to it as its data  
+**C)** Outputs the string `"header"`  
+**D)** Renders the `<header>` HTML element  
 
 <details><summary>💡 Answer</summary>
 
-**B) User action → server request → page update**
+**B) Calls a named sub-template, passing the current data**
 
-Examples that qualify: clicking a location on the detail page to see all artists who played there, a "related artists" button, a "show tour history" button. The key is that the event triggers a go-to-server-and-get-data cycle, not just front-end DOM manipulation.
+```html
+<!-- In base.html: -->
+{{ define "layout" }}
+<html>
+<body>
+    {{ template "content" . }}
+</body>
+</html>
+{{ end }}
 
-</details>
-
----
-
-### Q26: You implement a `/location?name=berlin` endpoint that returns all artists who played in Berlin. What should it return — a full HTML page or JSON?
-
-**A)** Must be JSON  
-**B)** Must be a full HTML page  
-**C)** Either can work — a full page redirect is simpler; JSON with JavaScript is more dynamic. The spec doesn't require AJAX.  
-**D)** It must use WebSockets  
-
-<details><summary>💡 Answer</summary>
-
-**C) Either approach works**
-
-The simplest implementation: a link navigates to `/location?name=berlin` which renders a full HTML page. This requires no JavaScript and is easier to implement correctly. JSON + JavaScript is more impressive but adds complexity. For this project, a full-page response is perfectly acceptable.
-
-</details>
-
----
-
-### Q27: Your event handler at `/location?name=berlin-germany` must find all artists who have a concert in Berlin. How do you check if an artist has a location that matches?
-
-**A)** `if artist.Location == "berlin-germany"`  
-**B)** Loop through the artist's `DatesLocations` map keys and check if any key equals or contains the search string  
-**C)** Use `strings.Contains` on a concatenated string of all locations  
-**D)** The API provides a pre-built endpoint for this  
-
-<details><summary>💡 Answer</summary>
-
-**B) Loop through `DatesLocations` map keys**
+<!-- In page.html: -->
+{{ define "content" }}
+<h1>{{ .Title }}</h1>
+{{ end }}
+```
 
 ```go
-for location := range relation.DatesLocations {
-    if strings.Contains(location, searchTerm) {
-        // This artist has a concert in the searched location
-        matched = append(matched, artist)
-        break
-    }
-}
+// Load both files:
+tmpl := template.Must(template.ParseFiles("base.html", "page.html"))
+tmpl.ExecuteTemplate(w, "layout", data)
 ```
 
-The relation data's `DatesLocations` map has location strings as keys. Loop through them and check for a match.
-
-</details>
-
----
-
-### Q28: What is the minimum test coverage the spec requires?
-
-**A)** No tests required  
-**B)** Unit tests for at least the data fetching and decoding logic  
-**C)** Full integration tests  
-**D)** Only end-to-end tests  
-
-<details><summary>💡 Answer</summary>
-
-**B) Unit tests for data fetching and decoding logic**
-
-At minimum: test that your fetch functions return the correct types, test that your JSON decoding works with a sample JSON fixture, and test that your lookup/matching logic returns correct results. Write these alongside the code, not as an afterthought.
+Named templates are how Go implements template inheritance and composition. The `.` (current data) is explicitly passed to the sub-template — it doesn't flow through automatically.
 
 </details>
 
@@ -704,19 +1016,28 @@ At minimum: test that your fetch functions return the correct types, test that y
 
 | Score | Result |
 |---|---|
-| 26–28 ✅ | **Excellent.** Strong API and JSON foundations — start immediately. |
-| 22–25 ✅ | **Ready.** Review missed questions, especially struct tags and response body handling. |
-| 17–21 ⚠️ | **Study first.** JSON decoding and HTTP client patterns need more work. |
-| Below 17 ❌ | **Not ready.** Review `encoding/json`, `http.Get`, and struct tags before starting. |
+| 33–35 ✅ | **Exceptional** — very strong foundation across all four topics. |
+| 28–32 ✅ | **Ready** — review individual missed sections before starting. |
+| 21–27 ⚠️ | **Study first** — identify which section you scored lowest on and work through it before proceeding. |
+| Below 21 ❌ | **Not ready** — multiple topics need work. Budget at least a week on HTTP, JSON, and templates before starting. |
 
 ---
 
-## 🔍 Review Map
+## 🔍 Missed Questions Guide
 
-| Questions Missed | Topic to Study |
-|---|---|
-| Q1–Q6 | `http.Get`, `resp.Body.Close()`, checking `StatusCode`, `json.NewDecoder` |
-| Q7–Q14 | Struct tags, `json.Unmarshal`, zero values on decode fail, `map[string][]string` |
-| Q15–Q19 | Matching by ID, the relation endpoint, `strconv.Atoi`, query params |
-| Q20–Q24 | `/` catch-all handler, template structs, `range` over maps in templates |
-| Q25–Q28 | Client-server events, location matching, test requirements |
+| Missed | What to study | Resources |
+|---|---|---|
+| Q1–Q8 | `http.Get`, `resp.Body.Close()`, status codes vs errors, custom requests, timeouts | `pkg.go.dev/net/http` |
+| Q9–Q17 | Struct tags, zero on missing key, `map[string]interface{}`, `omitempty`, marshal vs unmarshal | `pkg.go.dev/encoding/json` |
+| Q18–Q26 | Handler registration, status codes, `WriteHeader` ordering, query params, form values, `FileServer` | `pkg.go.dev/net/http` |
+| Q27–Q35 | `{{ range }}`, `{{ if }}`, `ParseFiles`, `Execute`, escaping, named templates | `pkg.go.dev/html/template` |
+
+---
+
+## 🧪 Difficulty Breakdown
+
+| Difficulty | Questions | Topics tested |
+|---|---|---|
+| 🟢 Easy (11) | Q1, Q2, Q9, Q10, Q11, Q18, Q19, Q20, Q27, Q28, Q29 | Core syntax, zero values, basic calls |
+| 🟡 Medium (15) | Q3, Q4, Q5, Q6, Q12, Q13, Q14, Q15, Q21, Q22, Q23, Q24, Q30, Q31, Q32, Q33 | Combining concepts, real gotchas |
+| 🔴 Hard (9) | Q7, Q8, Q16, Q17, Q25, Q26, Q34, Q35 | Production concerns, subtle behavior, composition |
