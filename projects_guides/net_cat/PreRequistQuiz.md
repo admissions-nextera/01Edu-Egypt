@@ -1,7 +1,4 @@
 # 🔥 Go Quiz — TCP Networking, Concurrency & Mutex
-## Progressive Difficulty | All 8 Topics 💪
-
----
 
 ## BLOCK 1 — TCP Listener & Accept Loop
 
