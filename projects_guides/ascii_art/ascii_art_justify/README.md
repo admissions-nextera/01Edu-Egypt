@@ -1,6 +1,8 @@
 # ASCII-Art-Justify Project Guide
 
-> **Before you start:** This project builds on ascii-art, ascii-art-fs, and ascii-art-output. All three must be working. Additionally, read about how text alignment works in any word processor — center, left, right, and justify — before writing any code.
+> **Before you start:** This project builds on ascii-art, ascii-art-fs, and ascii-art-output. All three must be working. Read about how text alignment works in any word processor — center, left, right, and justify — before writing any code.
+>
+> **Standard library only.** This project uses only packages from https://pkg.go.dev/std. You will use `syscall` and `unsafe` directly to read the terminal size. A popular third-party alternative is `golang.org/x/term` — you will learn what it does and why students use it, but you will not use it here.
 
 ---
 
@@ -8,10 +10,12 @@
 
 By completing this project you will learn:
 
-1. **Terminal Width Detection** — Reading the current terminal size at runtime
-2. **Text Alignment Algorithms** — Implementing center, left, right, and justify alignment mathematically
-3. **Dynamic Layout** — Adapting output to the available space instead of printing fixed-width content
-4. **Justify Algorithm** — Distributing extra space evenly between words — the hardest alignment to implement
+1. **Terminal Width Detection** — Reading the current terminal size using a raw syscall from Go's standard library
+2. **syscall and unsafe** — How Go talks directly to the Linux kernel without a third-party wrapper
+3. **Text Alignment Algorithms** — Implementing center, left, right, and justify alignment mathematically
+4. **Dynamic Layout** — Adapting output to the available space instead of printing fixed-width content
+5. **Justify Algorithm** — Distributing extra space evenly between words — the hardest alignment to implement
+6. **Refactoring** — Changing a function's return type without breaking existing behavior
 
 ---
 
@@ -19,19 +23,31 @@ By completing this project you will learn:
 
 ### 1. ASCII-Art-Output (Completed)
 - `render` returns a string
-- Banner loading and rendering pipeline
+- Banner loading and rendering pipeline working
 
-### 2. Terminal Size
-- How to get the width of the current terminal window in Go
-- Search: **"golang get terminal width size"**
-- Search: **"golang syscall terminal size TIOCGWINSZ"**
+### 2. The Terminal Size Syscall
+- What `TIOCGWINSZ` is — the ioctl request code that asks the kernel for terminal dimensions
+- What `syscall.Syscall` does and how to pass a pointer to a struct through it
+- What `unsafe.Pointer` is and why it is needed here
+- Search: **"linux TIOCGWINSZ ioctl terminal size"**
+- Search: **"golang syscall SYS_IOCTL TIOCGWINSZ"**
+- Search: **"golang unsafe Pointer syscall example"**
+
+> **Third-party awareness:** `golang.org/x/term` is a package maintained by the Go team that wraps exactly this syscall into a clean `term.GetSize(fd)` function. It is not in the standard library — it requires `go get golang.org/x/term`. In real projects you would likely use it. Here, you will implement what it wraps yourself, so you understand what is underneath.
 
 ### 3. Alignment Math
-- What does it mean to center a string of width W in a space of width T?
-- What does right-alignment mean in terms of padding?
-- What is justify alignment — how does it differ from the others?
+- What it means to center a string of width W in a space of width T
+- What right-alignment means in terms of padding
+- What justify alignment is and how it differs from the others
+- Draw each alignment on paper before writing any code
 
-**Think through the math before writing any code.** Draw it on paper first.
+### 4. Go standard packages you will use
+- `syscall` — `syscall.Syscall`, `syscall.SYS_IOCTL`, `syscall.TIOCGWINSZ`
+- `unsafe` — `unsafe.Pointer`, `unsafe.Sizeof`
+- `strings` — split words, join rows, repeat spaces
+- `os` — `os.Stderr`, check stdout file descriptor
+
+**If any of these are unfamiliar, read about them before writing any code.**
 
 ---
 
@@ -40,8 +56,8 @@ By completing this project you will learn:
 ```
 ascii-art-justify/
 ├── main.go
-├── banner.go
-├── align.go        ← new file for alignment logic
+├── banner.go       ← existing render logic
+├── align.go        ← new: terminal width + all alignment functions
 ├── standard.txt
 ├── shadow.txt
 ├── thinkertoy.txt
@@ -58,35 +74,37 @@ go run . --align=center "hello" standard
 go run . --align=right "hello" shadow
 go run . --align=left "Hello There" standard
 go run . --align=justify "how are you" shadow
-go run . "hello"                              → left alignment by default
-go run . --align=unknown "hello"              → usage message
+go run . "hello"                         → left alignment by default
+go run . --align=unknown "hello"         → usage message
 ```
 
 **Questions to answer before writing anything:**
-- After parsing `--align=center`, what arguments remain?
+- After stripping `--align=center` from the args, what arguments remain?
 - What are the four valid alignment types? What happens for anything else?
-- What is the default alignment when no `--align` flag is given?
-- How do you combine this flag with the existing `--output` flag from ascii-art-output?
+- What is the default when no `--align` flag is given?
+- Your program also supports `--output=` from ascii-art-output. How do you strip both flags before reading the string and banner arguments?
 
 **Code Placeholder:**
 ```go
 // main.go
 
 func main() {
-    // 1. Scan args for "--align=..."
-    //    Extract the alignment type, remove from args
-    //    Default to "left" if not present
-    //    If value is not one of: center, left, right, justify → print usage and return
+    // 1. Scan os.Args for "--align=..."
+    //    Extract the value after "=", remove the arg from the slice
+    //    Default to "left" if not found
+    //    If value is not one of: left, right, center, justify → print usage and return
 
-    // 2. Also handle "--output=..." if present (from ascii-art-output)
+    // 2. Also scan for "--output=..." (from ascii-art-output)
+    //    Extract filename, remove the arg
 
     // 3. Parse remaining args for [STRING] and optional [BANNER]
+    //    Same logic as ascii-art-fs
 
-    // 4. Get terminal width
+    // 4. Get terminal width (Milestone 2)
 
-    // 5. Load banner and render with alignment applied
+    // 5. Load banner, render with alignment applied
 
-    // 6. Output to file or stdout
+    // 6. Write to file or stdout
 }
 ```
 
@@ -97,46 +115,78 @@ Usage: go run . [OPTION] [STRING] [BANNER]
 Example: go run . --align=right something standard
 ```
 
+**Verify:** All six examples above produce the correct behavior before you write any alignment logic.
+
 ---
 
-## Milestone 2 — Get the Terminal Width
+## Milestone 2 — Get the Terminal Width Using `syscall`
 
-**Goal:** At runtime, detect how wide the terminal window currently is.
+**Goal:** At runtime, detect how wide the terminal window currently is — using only the standard library.
 
 **Questions to answer:**
-- Which Go package gives you access to terminal dimensions?
-- What syscall is used to query the terminal size?
-- What should you fall back to if the terminal size cannot be determined?
+- What struct does the kernel fill when you call `TIOCGWINSZ`? What fields does it have?
+- How do you define that struct in Go so its memory layout matches what the kernel expects?
+- What three arguments does `syscall.Syscall` take? What do you pass for each one?
+- Why do you need `unsafe.Pointer` to pass your struct to the kernel?
+- What should you return if the syscall fails (for example, when stdout is redirected to a file)?
+
+> **Third-party comparison:** `golang.org/x/term.GetSize(fd int)` does exactly this internally. If you read its source at https://cs.opensource.google/go/x/term, you will see it calls the same `syscall.Syscall` with the same `TIOCGWINSZ`. The difference is it handles multiple operating systems (Linux, macOS, Windows). Your implementation only needs to work on Linux.
 
 **Code Placeholder:**
 ```go
 // align.go
 
+import (
+    "syscall"
+    "unsafe"
+)
+
+// winsize mirrors the kernel's winsize struct from <sys/ioctl.h>
+// The field order and types must match exactly
+type winsize struct {
+    // Row    uint16  ← number of terminal rows
+    // Col    uint16  ← number of terminal columns
+    // Xpixel uint16  ← pixel width (unused here)
+    // Ypixel uint16  ← pixel height (unused here)
+}
+
 func getTerminalWidth() int {
-    // Query the terminal dimensions using a syscall
-    // Return the number of columns
-    // If the query fails, return a sensible default (e.g. 80)
+    // 1. Create a zeroed winsize struct
+
+    // 2. Call syscall.Syscall with:
+    //    - syscall.SYS_IOCTL as the syscall number
+    //    - uintptr(syscall.Stdout) as the file descriptor
+    //    - uintptr(syscall.TIOCGWINSZ) as the request
+    //    - uintptr(unsafe.Pointer(&ws)) as the pointer to your struct
+
+    // 3. Check the return value — if it indicates failure, return 80
+
+    // 4. Return int(ws.Col)
 }
 ```
 
 **Resources:**
-- Search: **"golang terminal width TIOCGWINSZ"**
-- Search: **"golang sys unix Winsize"**
+- `man ioctl_tty` — search for `TIOCGWINSZ` and the `winsize` struct
+- https://pkg.go.dev/syscall — search for `SYS_IOCTL`, `TIOCGWINSZ`, `Syscall`
+- https://pkg.go.dev/unsafe — read `Pointer`
+- Search: **"golang syscall TIOCGWINSZ winsize struct"**
 
 **Verify:**
-- Print the terminal width before rendering
-- Resize your terminal window and run again — the number should change
+```bash
+go run . --align=left "hello"   # prints terminal width before rendering
+# Resize your terminal and run again — the number should change
+```
 
 ---
 
 ## Milestone 3 — Calculate the Width of Rendered Text
 
-**Goal:** Before aligning, you need to know how wide the rendered ASCII art is (in characters).
+**Goal:** Before aligning, know how wide the ASCII art will be in columns — without rendering it first.
 
 **Questions to answer:**
-- Each character in the banner is some number of columns wide. How do you find out how wide a specific character is?
-- The width of a rendered string is the sum of the widths of all its characters. How do you calculate this without rendering first?
-- Do all characters in a banner have the same width? Test with `'i'` vs `'W'`.
+- Each character in the banner occupies some number of columns. How do you measure it?
+- Does every character in `standard.txt` have the same width? Test `'i'` versus `'W'` to find out.
+- The total rendered width is the sum of individual character widths. How do you compute this for a multi-character string?
 
 **Code Placeholder:**
 ```go
@@ -144,36 +194,37 @@ func getTerminalWidth() int {
 
 func renderedWidth(banner []string, text string) int {
     // For each rune in text:
-    //   Get that character's 8 art lines
-    //   The width of the character = length of any one of those lines
-    //   Add it to the total width
+    //   Call getCharLines to get the 8 art lines for that character
+    //   The character's column width = len of any one of those 8 lines
+    //   Add it to a running total
     // Return the total
 }
 ```
 
-**Verify:** Calculate the expected width of `"hello"` in `standard.txt` manually by examining the banner file, then confirm your function returns the same number.
+**Verify:** Calculate the expected width of `"hello"` in `standard.txt` by hand (open the file and count). Confirm your function returns the same number.
 
 ---
 
 ## Milestone 4 — Left and Right Alignment
 
 **Goal:**
-- Left: no padding (this is already how your render works)
-- Right: add enough spaces before each row so the art ends at the terminal's right edge
+- Left: no padding (already how your renderer works)
+- Right: each row is padded with spaces on the left so the art ends at the terminal's right edge
 
 **Questions to answer:**
-- If the terminal is T columns wide and your art is W columns wide, how many spaces do you add before each row for right alignment?
-- Where exactly do you add the padding — before the entire output or before each individual row?
+- If the terminal is T columns wide and the art is W columns wide, how many spaces go before each row?
+- What do you do if the padding calculation produces a negative number?
+- Do you add padding before the complete output, or before each individual row? Why does it matter?
 
 **Code Placeholder:**
 ```go
 // align.go
 
-func alignRight(renderedRows []string, termWidth int) []string {
-    // For each row in renderedRows:
-    //   Calculate padding = termWidth - len(row)
-    //   If padding < 0, set to 0 (text wider than terminal)
-    //   Prepend that many spaces to the row
+func alignRight(rows []string, termWidth int) []string {
+    // For each row:
+    //   padding = termWidth - len(row)
+    //   If padding < 0: set to 0
+    //   Prepend padding spaces to the row
     // Return the padded rows
 }
 ```
@@ -182,27 +233,28 @@ func alignRight(renderedRows []string, termWidth int) []string {
 ```bash
 go run . --align=right "hello" shadow | cat -e
 ```
-The art should be pushed to the right side. Compare position against the spec example carefully.
+The art should be pushed against the right edge. Compare column positions against the spec example.
 
 ---
 
 ## Milestone 5 — Center Alignment
 
-**Goal:** Each row of the ASCII art is horizontally centered in the terminal.
+**Goal:** Each row of ASCII art is horizontally centered within the terminal width.
 
 **Questions to answer:**
 - If the terminal is T wide and the art is W wide, how many spaces go before each row?
-- What do you do with the remainder when the number is odd?
+- When `(T - W)` is odd, integer division truncates. Which side gets the smaller amount — left or right?
+- Is this acceptable? What do standard text editors do in this situation?
 
 **Code Placeholder:**
 ```go
 // align.go
 
-func alignCenter(renderedRows []string, termWidth int) []string {
+func alignCenter(rows []string, termWidth int) []string {
     // For each row:
-    //   Calculate padding = (termWidth - len(row)) / 2
-    //   If padding < 0, set to 0
-    //   Prepend that many spaces to the row
+    //   padding = (termWidth - len(row)) / 2
+    //   If padding < 0: set to 0
+    //   Prepend padding spaces to the row
     // Return the padded rows
 }
 ```
@@ -211,74 +263,107 @@ func alignCenter(renderedRows []string, termWidth int) []string {
 ```bash
 go run . --align=center "hello" standard | cat -e
 ```
-Compare against the spec example. The art should appear in the middle of the terminal.
+Compare position against the spec example carefully.
 
 ---
 
 ## Milestone 6 — Justify Alignment
 
-**Goal:** When there are multiple words, spread them so the first word starts at the left edge and the last word ends at the right edge, with extra spaces distributed evenly between words.
+**Goal:** Multiple words are spread so the first starts at the left edge and the last ends at the right edge. Extra space is distributed as evenly as possible between words.
 
-This is the most complex alignment. Think carefully before coding.
+This is the most complex milestone. Think through the algorithm on paper before writing any code.
 
 **Questions to answer:**
-- How many words does the input have? How do you split by words?
-- Each word becomes a block of rendered art. How wide is each word's block?
-- The total gap to distribute = `termWidth - sum of all word widths`. How do you split this gap evenly across the spaces between words?
-- What do you do when the gap does not divide evenly? Which gaps get an extra space?
-- What happens when there is only one word? (It should align left.)
-- Each word is 8 rows tall. How do you interleave the padding row by row?
+- How do you split the input string into words?
+- What happens when there is only one word? (There are no gaps to distribute — fall back to left alignment.)
+- You need the rendered width of each word separately. How do you get it?
+- `totalSpace = termWidth - sum of all word widths`. You have `gaps = len(words) - 1` gaps. How do you split `totalSpace` across `gaps` gaps as evenly as possible?
+- When `totalSpace` does not divide evenly into `gaps`, which gaps get an extra space?
+- Each word is 8 rows tall. How do you assemble the final output row by row — interleaving word rows with the calculated gap spaces?
 
 **Code Placeholder:**
 ```go
 // align.go
 
 func alignJustify(banner []string, words []string, termWidth int) []string {
-    // 1. If only one word, render it left-aligned and return
+    // 1. If len(words) <= 1: render the single word and return left-aligned rows
 
-    // 2. Render each word into its 8-row block separately
+    // 2. Render each word into its 8-row block using renderLine
+    //    Store as [][]string — one []string (8 rows) per word
 
-    // 3. Calculate total width used by all words (sum of each word block's width)
+    // 3. Calculate total word width: sum of len(wordRows[i][0]) for each word
 
-    // 4. Calculate total space to distribute between words
-    //    gaps = len(words) - 1
+    // 4. Calculate spacing:
+    //    gaps      = len(words) - 1
     //    totalSpace = termWidth - totalWordWidth
-    //    baseSpace = totalSpace / gaps
-    //    extraSpaces = totalSpace % gaps  (first `extraSpaces` gaps get one extra space)
+    //    baseSpace  = totalSpace / gaps
+    //    extraSpaces = totalSpace % gaps
+    //    → first extraSpaces gaps get (baseSpace + 1) spaces
+    //    → remaining gaps get baseSpace spaces
 
-    // 5. For each row (0 to 7):
-    //    Build the row by joining word rows with the calculated spacing between each pair
-    //    Return the 8 combined rows
+    // 5. Build output row by row (rows 0 to 7):
+    //    For each row:
+    //      Start with wordRows[0][row]
+    //      For each subsequent word i:
+    //        Append the gap for position i (baseSpace or baseSpace+1 spaces)
+    //        Append wordRows[i][row]
+    //    Collect the 8 assembled rows
+
+    // 6. Return the 8 rows
 }
 ```
+
+**Resources:**
+- Search: **"text justification algorithm spaces between words"**
+- `strings.Repeat(" ", n)` — produces n spaces
 
 **Verify:**
 ```bash
 go run . --align=justify "how are you" shadow | cat -e
 ```
-The first word should start at column 1, the last word should end at the terminal's right edge, spacing between should be distributed as evenly as possible.
+First word starts at column 1. Last word ends at the terminal's right edge. Space between words is as even as possible.
 
 ---
 
-## Milestone 7 — Refactor render to Return Rows
+## Milestone 7 — Refactor `renderLine` to Return Rows
 
-**Goal:** Your current `render` function returns a joined string. For alignment you need individual rows. Refactor so alignment can work row by row.
+**Goal:** Justify needs individual rows from `renderLine`, not a joined string. Refactor so the return type is `[]string`.
 
 **Questions to answer:**
-- Should `renderLine` return `[]string` (one element per row) instead of a single string?
-- How does this change the way `render` calls `renderLine`?
-- Will your previous test cases still pass after the refactor?
+- After the refactor, how does the non-justify path still produce the same output? (Hint: `strings.Join`)
+- Does changing `renderLine`'s return type break any existing test cases? How do you check?
+- What is the correct pipeline order for right alignment? `renderLine → alignRight → join → print` — or something else?
 
-**Verify:** After refactoring, all previous test cases with `--align=left` (default) still produce identical output.
+**Code Placeholder:**
+```go
+// banner.go
+
+func renderLine(banner []string, text string) []string {
+    // Build and return a slice of exactly 8 strings (one per art row)
+    // Do NOT print — return the rows to the caller
+}
+
+func render(banner []string, input string) string {
+    // Split input on "\\n"
+    // For each part:
+    //   If empty: add a blank line to output
+    //   Otherwise: call renderLine, join the 8 rows with "\n", add to output
+    // Return the full output string
+}
+```
+
+**Verify:** After refactoring, run all existing ascii-art test cases. Every one must produce identical output.
 
 ---
 
 ## Debugging Checklist
 
-- Does the alignment look correct in your terminal but not in the spec example? Make sure you are using the real terminal width, not a hardcoded value.
-- Is right alignment off by a few columns? Double-check your `renderedWidth` function — measure with `len(row)` on an actual rendered row, not a calculation.
-- Is justify alignment creating uneven spacing? Check your `extraSpaces` logic — the first few gaps should have one more space than the rest.
-- Does the output break when you resize the terminal mid-test? That is expected — the terminal width is read once at program start.
+- Does `syscall.Syscall` always return -1? Make sure you are passing `uintptr(syscall.Stdout)` (value 1), not `uintptr(os.Stdout.Fd())` — both work but the second requires the import of `os`. Check that `TIOCGWINSZ` is the right constant on Linux (`0x5413`).
+- Does the terminal width come back as 0? Your `winsize` struct field order may not match the kernel's layout. `Row` must come before `Col` — the kernel fills them in that order.
+- Is right alignment off by a few columns? You are measuring padding with a hardcoded width instead of using `len(row)` on the actual rendered row. Measure the rendered row, not a calculated estimate.
+- Is justify alignment producing uneven spacing? Check your `extraSpaces` logic — the first `extraSpaces` gaps get one extra space, the rest get `baseSpace`. Print each gap size to verify before assembling rows.
+- Does the justify output look correct for 3 words but wrong for 2? A two-word input has exactly 1 gap — all the space goes there. Trace through your formula manually for that case.
+- Does refactoring `renderLine` break previous test cases? Make sure `render` calls `strings.Join(renderLine(...), "\n") + "\n"` instead of printing directly.
 
 ---
 
@@ -286,22 +371,34 @@ The first word should start at column 1, the last word should end at the termina
 
 | Package | What You Use It For | Docs |
 |---|---|---|
-| `os` | Read args | https://pkg.go.dev/os |
-| `strings` | Parse flags, split words, build rows | https://pkg.go.dev/strings |
-| `fmt` | Print output | https://pkg.go.dev/fmt |
-| `syscall` or `golang.org/x/term` | Get terminal width | https://pkg.go.dev/syscall |
+| `syscall` | `Syscall`, `SYS_IOCTL`, `TIOCGWINSZ`, `Stdout` | https://pkg.go.dev/syscall |
+| `unsafe` | `Pointer` — pass struct address to kernel | https://pkg.go.dev/unsafe |
+| `strings` | Split words, join rows, repeat spaces | https://pkg.go.dev/strings |
+| `os` | Args, write output to file or stdout | https://pkg.go.dev/os |
+| `fmt` | Print usage message and errors | https://pkg.go.dev/fmt |
+
+> **Third-party packages you will NOT use here but should know exist:**
+>
+> | Package | What it does | Why students use it |
+> |---|---|---|
+> | `golang.org/x/term` | Wraps `TIOCGWINSZ` into `term.GetSize(fd)` | Cleaner API, cross-platform (Linux, macOS, Windows) |
+> | `github.com/mattn/go-isatty` | Detects if stdout is a real terminal | Useful before calling `GetSize` |
+>
+> These are not allowed in this project, but they exist precisely to solve the problem you are solving here. Reading their source code after you finish is a good exercise.
 
 ---
 
 ## Submission Checklist
 
-- [ ] `--align=left` produces left-aligned output (same as default)
-- [ ] `--align=right` pushes art to the right edge of the terminal
-- [ ] `--align=center` centers art horizontally
-- [ ] `--align=justify` spreads words edge to edge with even spacing
-- [ ] Single-word justify falls back to left alignment
-- [ ] Terminal width is read at runtime — output adapts when window is resized
-- [ ] Invalid alignment type prints usage message and exits
-- [ ] Works with shadow and thinkertoy banners
+- [ ] `--align=left` produces left-aligned output (same as default behavior)
+- [ ] `--align=right` pushes art flush to the right edge of the terminal
+- [ ] `--align=center` centers art horizontally in the terminal
+- [ ] `--align=justify` spreads words from left edge to right edge with even spacing
+- [ ] Single-word justify falls back to left alignment without crashing
+- [ ] Terminal width read using `syscall.Syscall` + `TIOCGWINSZ` — no third-party packages
+- [ ] Falls back to width 80 when the syscall fails (redirected output)
+- [ ] Invalid alignment type prints usage message and exits cleanly
+- [ ] Works with `shadow` and `thinkertoy` banners
 - [ ] Compatible with `--output` flag from ascii-art-output
-- [ ] All previous ascii-art test cases still pass
+- [ ] All previous ascii-art test cases still pass after `renderLine` refactor
+- [ ] Only standard Go packages used (`go.mod` has no external dependencies)
